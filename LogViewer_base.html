@@ -1,0 +1,1298 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Usercube LogViewer</title>
+  <style>
+    /* ── Design tokens ─────────────────────────────────────────────────────── */
+    :root {
+      --bg:    #f7f5f2;
+      --card:  #ffffff;
+      --card2: #faf8f5;
+      --hover: #f0eef8;
+      --brd:   #e4e0db;
+      --brd2:  #d0cbc4;
+      --tx:    #1a1535;
+      --tx2:   #5c5775;
+      --tx3:   #9490a5;
+      --ac:    #5B47E0;
+      --ac2:   #4B3CC5;
+      --acd:   rgba(91, 71, 224, .08);
+      --acd2:  rgba(91, 71, 224, .15);
+      --add:   #16a34a;
+      --addbg: #dcfce7;
+      --mod:   #ca8a04;
+      --modbg: #fef9c3;
+      --del:   #dc2626;
+      --delbg: #fee2e2;
+      --fn:    'Segoe UI', system-ui, sans-serif;
+      --mo:    Consolas, 'Courier New', monospace;
+      --r:     6px;
+    }
+
+    /* ── Reset & base ──────────────────────────────────────────────────────── */
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { background: var(--bg); color: var(--tx); font-family: var(--fn); line-height: 1.5; }
+    ::-webkit-scrollbar { width: 6px; height: 6px; }
+    ::-webkit-scrollbar-track { background: var(--bg); }
+    ::-webkit-scrollbar-thumb { background: var(--brd2); border-radius: 3px; }
+
+    /* ── Layout ────────────────────────────────────────────────────────────── */
+    .app { max-width: 1560px; margin: 0 auto; padding: 16px 20px; }
+
+    /* ── Header ────────────────────────────────────────────────────────────── */
+    .hdr {
+      display: flex; align-items: center; gap: 12px;
+      margin-bottom: 14px; padding-bottom: 12px;
+      border-bottom: 2px solid var(--ac);
+    }
+    .logo {
+      width: 34px; height: 34px; border-radius: var(--r);
+      background: var(--ac); display: flex; align-items: center;
+      justify-content: center; font-weight: 700; font-size: 13px;
+      color: #fff; flex-shrink: 0;
+    }
+    .hdr h1     { font-size: 18px; font-weight: 700; color: var(--ac); }
+    .hdr-sub    { font-size: 10px; color: var(--tx3); margin-top: 1px; }
+    .hdr-right  { display: flex; gap: 8px; margin-left: auto; align-items: center; }
+    .hdr-stats  { display: flex; gap: 14px; font-size: 11px; font-family: var(--mo); color: var(--tx2); }
+    .hdr-stats span { display: flex; align-items: center; gap: 4px; }
+    .dot { width: 7px; height: 7px; border-radius: 50%; display: inline-block; }
+
+    /* ── Buttons ───────────────────────────────────────────────────────────── */
+    .btn-ex {
+      background: var(--acd); border: 1px solid var(--ac); border-radius: var(--r);
+      padding: 5px 10px; cursor: pointer; color: var(--ac);
+      font-size: 11px; font-family: var(--mo); font-weight: 600;
+      transition: background .12s; display: flex; align-items: center; gap: 4px;
+    }
+    .btn-ex:hover { background: var(--acd2); }
+
+    /* ── Tabs ──────────────────────────────────────────────────────────────── */
+    .tabs { display: flex; margin-bottom: 16px; border-bottom: 2px solid var(--brd); }
+    .tab {
+      padding: 8px 18px; font-size: 12px; font-weight: 600;
+      color: var(--tx3); cursor: pointer;
+      border-bottom: 2px solid transparent; margin-bottom: -2px;
+      transition: color .12s;
+    }
+    .tab:hover { color: var(--tx2); }
+    .tab.active { color: var(--ac); border-bottom-color: var(--ac); }
+
+    /* ── Stats cards ───────────────────────────────────────────────────────── */
+    .stats-row {
+      display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+      gap: 10px; margin-bottom: 16px;
+    }
+    .stat-card {
+      background: var(--card); border: 1px solid var(--brd);
+      border-radius: var(--r); padding: 12px 14px; transition: border-color .12s;
+    }
+    .stat-card:hover { border-color: var(--ac); }
+    .stat-label { font-size: 9px; text-transform: uppercase; letter-spacing: .8px; color: var(--tx3); margin-bottom: 2px; }
+    .stat-value { font-size: 22px; font-weight: 700; font-family: var(--mo); }
+    .stat-sub   { font-size: 10px; color: var(--tx3); margin-top: 1px; }
+
+    /* ── Timeline ──────────────────────────────────────────────────────────── */
+    .timeline {
+      background: var(--card); border: 1px solid var(--brd);
+      border-radius: var(--r); padding: 14px 16px; margin-bottom: 16px;
+    }
+    .timeline h2 { font-size: 12px; font-weight: 600; margin-bottom: 10px; color: var(--tx2); }
+    .timeline-chart {
+      display: flex; align-items: flex-end; gap: 3px;
+      height: 100px; overflow-x: auto; padding-bottom: 28px; position: relative;
+    }
+    .tl-bar-group {
+      display: flex; flex-direction: column; align-items: center;
+      min-width: 32px; flex: 1; position: relative;
+      cursor: pointer; height: 100%; justify-content: flex-end;
+    }
+    .tl-bar-group:hover .tl-tooltip { display: block; }
+    .tl-bars  { display: flex; flex-direction: column; width: 100%; gap: 1px; }
+    .tl-bar   { width: 100%; border-radius: 2px 2px 0 0; min-height: 1px; }
+    .tl-date-label {
+      position: absolute; bottom: -24px; font-size: 10px;
+      font-family: var(--mo); color: var(--tx2); white-space: nowrap; font-weight: 500;
+    }
+    .tl-tooltip {
+      display: none; position: absolute; top: -76px; left: 50%; transform: translateX(-50%);
+      background: var(--tx); color: var(--bg); border-radius: var(--r);
+      padding: 6px 10px; font-size: 10px; font-family: var(--mo);
+      white-space: nowrap; z-index: 100; pointer-events: none;
+      box-shadow: 0 4px 12px rgba(0,0,0,.2);
+    }
+    .tl-tooltip::after {
+      content: ''; position: absolute; bottom: -4px; left: 50%; transform: translateX(-50%);
+      border-left: 4px solid transparent; border-right: 4px solid transparent;
+      border-top: 4px solid var(--tx);
+    }
+
+    /* ── Table ─────────────────────────────────────────────────────────────── */
+    .table-wrap {
+      background: var(--card); border: 1px solid var(--brd);
+      border-radius: var(--r); overflow: hidden; margin-bottom: 16px;
+    }
+    table { width: 100%; border-collapse: collapse; font-size: 12px; }
+
+    thead th {
+      text-align: left; padding: 7px 8px; font-size: 9px;
+      text-transform: uppercase; letter-spacing: .7px; color: var(--tx3);
+      font-weight: 600; background: var(--card2); cursor: pointer;
+      user-select: none; white-space: nowrap; border-bottom: 1px solid var(--brd);
+    }
+    thead th:hover { color: var(--ac); }
+
+    /* ── Filter panel ──────────────────────────────────────────────────────── */
+    .fp {
+      background: var(--card); border: 1px solid var(--brd); border-radius: var(--r);
+      padding: 10px 14px 12px; margin-bottom: 12px;
+    }
+    .fp-hdr { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; }
+    .fp-title { font-size: 10px; font-weight: 700; color: var(--tx2); text-transform: uppercase; letter-spacing: .06em; }
+    .fp-badge {
+      font-size: 9px; font-weight: 700; font-family: var(--mo);
+      background: var(--ac); color: #fff; padding: 1px 6px; border-radius: 10px; display: none;
+    }
+    .fp-badge.visible { display: inline; }
+    .btn-reset {
+      margin-left: auto; font-size: 10px; font-family: var(--mo); color: var(--tx3);
+      cursor: pointer; background: none; border: none; padding: 2px 6px;
+      border-radius: 4px; transition: color .1s;
+    }
+    .btn-reset:hover { color: var(--del); }
+    .fp-rows { display: flex; flex-wrap: wrap; gap: 10px; align-items: flex-start; }
+    .fp-group { display: flex; flex-direction: column; gap: 4px; }
+    .fp-group.wide { flex: 1; min-width: 140px; max-width: 200px; }
+    .fp-lbl { font-size: 9px; font-weight: 700; color: var(--tx3); text-transform: uppercase; letter-spacing: .05em; }
+    .fp-group select, .fp-group input[type='text'],
+    .fp-group input[type='date'], .fp-group input[type='number'] {
+      background: var(--bg); border: 1px solid var(--brd); color: var(--tx);
+      padding: 4px 7px; border-radius: 4px; font-family: var(--mo); font-size: 11px;
+      outline: none; width: 100%; box-sizing: border-box;
+    }
+    .fp-group select:focus, .fp-group input:focus { border-color: var(--ac); }
+    .fp-range { display: flex; align-items: center; gap: 5px; }
+    .fp-range input { flex: 1; width: 0; }
+    .fp-range-sep { color: var(--tx3); font-size: 10px; }
+    .fp-minmax { display: flex; gap: 4px; }
+    .fp-minmax input[type='number'] { width: 36px; flex: none; -moz-appearance: textfield; }
+    .fp-minmax input[type='number']::-webkit-inner-spin-button,
+    .fp-minmax input[type='number']::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
+    .fp-vsep { width: 1px; background: var(--brd); align-self: stretch; margin: 0 2px; }
+    .ct-toggles { display: flex; gap: 4px; flex-wrap: wrap; }
+    .ct-toggle {
+      padding: 3px 10px; border: 1px solid var(--brd2); background: var(--bg);
+      color: var(--tx3); font-size: 10px; font-weight: 600; font-family: var(--mo);
+      cursor: pointer; border-radius: 20px; transition: all .12s; white-space: nowrap;
+      user-select: none;
+    }
+    .ct-toggle.active-add { background: var(--addbg); border-color: var(--add); color: var(--add); }
+    .ct-toggle.active-mod { background: var(--modbg); border-color: var(--mod); color: var(--mod); }
+    .ct-toggle.active-del { background: var(--delbg); border-color: var(--del); color: var(--del); }
+
+    tbody tr { border-bottom: 1px solid var(--brd); transition: background .1s; cursor: pointer; }
+    tbody tr:hover { background: var(--hover); }
+    td { padding: 7px 8px; font-family: var(--mo); font-size: 11px; vertical-align: top; }
+
+    /* ── Badges ────────────────────────────────────────────────────────────── */
+    .badge     { display: inline-block; padding: 1px 8px; border-radius: 10px; font-size: 10px; font-weight: 600; }
+    .badge-add { background: var(--addbg); color: var(--add); }
+    .badge-mod { background: var(--modbg); color: var(--mod); }
+    .badge-del { background: var(--delbg); color: var(--del); }
+
+    /* ── Entity tag ────────────────────────────────────────────────────────── */
+    .et-tag {
+      background: var(--acd); color: var(--ac); padding: 1px 6px;
+      border-radius: 3px; font-size: 10px; font-family: var(--mo);
+      display: inline-block; max-width: 160px;
+      overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    }
+
+    /* ── Detail row ────────────────────────────────────────────────────────── */
+    .det      { padding: 12px 14px; background: var(--card2); border-top: 1px solid var(--brd); }
+    .det-meta { font-size: 10px; color: var(--tx3); margin-bottom: 8px; }
+
+    .changes-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 5px; }
+    .change-item {
+      display: flex; justify-content: space-between; align-items: center;
+      padding: 4px 8px; border-radius: 4px;
+      background: var(--card); border: 1px solid var(--brd);
+      font-family: var(--mo); font-size: 11px;
+    }
+    .change-item.hl { border-left: 3px solid var(--ac); background: var(--acd); }
+    .change-key { color: var(--tx3); }
+    .change-val {
+      color: var(--tx); font-weight: 500; text-align: right;
+      max-width: 140px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    }
+    .change-val.null-val { color: var(--tx3); font-style: italic; }
+    mark { background: var(--acd2); color: var(--ac); border-radius: 2px; padding: 0 2px; }
+
+    /* ── Roles ─────────────────────────────────────────────────────────────── */
+    .roles-list  { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 8px; }
+    .roles-label { font-size: 10px; font-weight: 600; letter-spacing: .5px; text-transform: uppercase; margin-bottom: 3px; }
+    .role-chip   { padding: 2px 7px; border-radius: 3px; font-size: 10px; font-family: var(--mo); border: 1px solid; }
+    .role-add    { background: var(--addbg); color: var(--add); border-color: var(--add); }
+    .role-rem    { background: var(--delbg); color: var(--del); border-color: var(--del); }
+    .role-unk    { background: var(--acd);   color: var(--tx2); border-color: var(--brd); }
+
+    /* ── Owner button & modal ──────────────────────────────────────────────── */
+    .btn-owner {
+      display: inline-flex; align-items: center; gap: 4px; margin-top: 8px;
+      padding: 4px 10px; background: var(--acd); color: var(--ac);
+      border: 1px solid var(--ac); border-radius: var(--r);
+      font-size: 10px; font-family: var(--mo); cursor: pointer; font-weight: 600;
+    }
+    .btn-owner:hover { background: var(--acd2); }
+
+    .modal-bg {
+      display: none; position: fixed; inset: 0;
+      background: rgba(0,0,0,.4); z-index: 1000;
+      align-items: center; justify-content: center;
+    }
+    .modal-bg.open { display: flex; }
+    .modal {
+      background: var(--card); border-radius: 8px; padding: 20px;
+      width: 620px; max-width: 95vw; max-height: 85vh; overflow-y: auto;
+      box-shadow: 0 16px 40px rgba(0,0,0,.2); border: 1px solid var(--brd);
+    }
+    .modal h2   { font-size: 15px; font-weight: 700; color: var(--ac); margin-bottom: 4px; }
+    .modal-sub  { font-size: 11px; color: var(--tx2); margin-bottom: 12px; font-family: var(--mo); }
+    .owner-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 5px; }
+    .owner-item {
+      display: flex; flex-direction: column; padding: 5px 8px;
+      border-radius: 4px; background: var(--card2); border: 1px solid var(--brd);
+      font-family: var(--mo); font-size: 11px;
+    }
+    .owner-key { font-size: 9px; color: var(--tx3); text-transform: uppercase; letter-spacing: .5px; }
+    .owner-val { color: var(--tx); font-weight: 500; word-break: break-all; }
+
+    .btn-modal-close {
+      display: block; margin-top: 12px; padding: 6px 16px;
+      background: var(--acd); color: var(--ac); border: 1px solid var(--ac);
+      border-radius: var(--r); font-size: 12px; font-weight: 600;
+      cursor: pointer; font-family: var(--mo);
+    }
+    .btn-modal-close:hover { background: var(--acd2); }
+
+    /* ── Pagination ────────────────────────────────────────────────────────── */
+    .pagination {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 8px 12px; border-top: 1px solid var(--brd);
+      font-size: 11px; color: var(--tx3); font-family: var(--mo);
+    }
+    .pagination button {
+      background: var(--card); border: 1px solid var(--brd); color: var(--tx);
+      padding: 4px 10px; border-radius: var(--r); cursor: pointer;
+      font-family: var(--mo); font-size: 11px;
+    }
+    .pagination button:hover:not(:disabled) { border-color: var(--ac); color: var(--ac); }
+    .pagination button:disabled { opacity: .3; cursor: default; }
+    .page-btns { display: flex; gap: 2px; }
+    .empty { text-align: center; padding: 30px; color: var(--tx3); font-size: 13px; }
+
+    /* ── Owner Lifecycle tab ───────────────────────────────────────────────── */
+    .lc-search { margin-bottom: 14px; }
+    .lc-search input {
+      background: var(--card); border: 1px solid var(--brd); color: var(--tx);
+      padding: 8px 12px; border-radius: var(--r);
+      font-family: var(--mo); font-size: 13px; width: 300px; outline: none;
+    }
+    .lc-search input:focus { border-color: var(--ac); }
+    .lc-card {
+      background: var(--card); border: 1px solid var(--brd);
+      border-radius: var(--r); padding: 14px 16px; margin-bottom: 12px;
+      transition: border-color .12s;
+    }
+    .lc-card:hover { border-color: var(--ac); }
+    .lc-name     { font-size: 14px; font-weight: 700; color: var(--tx); margin-bottom: 2px; }
+    .lc-id       { font-size: 10px; color: var(--tx3); font-family: var(--mo); margin-bottom: 10px; }
+    .lc-row {
+      display: flex; align-items: center; gap: 10px;
+      padding: 6px 0; border-top: 1px solid var(--brd);
+      font-family: var(--mo); font-size: 11px;
+    }
+    .lc-date     { color: var(--tx2); min-width: 110px; }
+    .lc-entities { display: flex; gap: 4px; flex: 1; flex-wrap: wrap; }
+    .lc-roles    { color: var(--tx3); font-size: 10px; margin-left: auto; white-space: nowrap; }
+
+    /* ── Responsive ────────────────────────────────────────────────────────── */
+    @media (max-width: 768px) {
+      .app { padding: 10px; }
+      .hdr-stats { display: none; }
+      .owner-grid { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+
+  <div class="app" id="app"></div>
+  <div class="modal-bg" id="modalBg">
+    <div class="modal" id="modal"></div>
+  </div>
+
+  <!-- Data injected by LogViewer.ps1 (file mode) or replaced with null (serve mode) -->
+  <script>window.__RAW_DATA__ = __DATA_PLACEHOLDER__;</script>
+
+  <script>
+(function () {
+  'use strict';
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // CONFIG
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  var PAGE_SIZE = 50;
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // STATE
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  var page      = 0;
+  var sortCol   = 'fileDate';
+  var sortDir   = 'desc';
+  var activeTab = 'orders';
+  var expanded  = {};
+
+  var F = {
+    sourceEntity:    '__all__',
+    targetEntity:    '__all__',
+    changeTypes:     { Added: true, Modified: true, Deleted: true },
+    search:          '',
+    dateFrom:        '',
+    dateTo:          '',
+    changesMin:      '',
+    changesMax:      '',
+    changesAttr:     '__all__',
+    changesValue:    '',
+    rolesMin:        '',
+    rolesMax:        '',
+    rolesDir:        '__all__',
+    lifecycleSearch: ''
+  };
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // MODE — file (embedded data) vs. serve (fetch from PS1 HTTP server)
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  var serverMode = (window.__RAW_DATA__ === null);
+  var apiBase    = serverMode ? (window.__API_BASE__ || '') : '';
+
+  // File mode: full dataset in memory
+  var data = serverMode ? [] : (Array.isArray(window.__RAW_DATA__) ? window.__RAW_DATA__ : []);
+
+  // Server mode: last responses from the API
+  var serverResult    = null;   // /api/query response
+  var serverLifecycle = null;   // /api/lifecycle response
+  var serverMeta      = { sourceEntities: [], targetEntities: [], entityLinks: { s2t: {}, t2s: {} } };
+  var fetchSeq        = 0;      // discard stale responses
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // SERVER MODE — fetch helpers
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  function triggerRender() {
+    if (!serverMode) { render(); return; }
+    if (activeTab === 'lifecycle') { fetchLifecycle(); } else { fetchAndRender(); }
+  }
+
+  function fetchAndRender() {
+    var seq = ++fetchSeq;
+    fetch(apiBase + '/api/query?' + buildQueryParams())
+      .then(function (r) { return r.json(); })
+      .then(function (result) {
+        if (seq !== fetchSeq) return;
+        serverResult = result;
+        render();
+      })
+      .catch(function () {
+        if (seq !== fetchSeq) return;
+        var el = document.getElementById('app');
+        if (el) el.innerHTML += "<div class='empty' style='color:var(--del)'>Could not reach server. Is LogViewer.ps1 still running?</div>";
+      });
+  }
+
+  function fetchLifecycle() {
+    if (!F.lifecycleSearch || F.lifecycleSearch.length < 2) {
+      serverLifecycle = { owners: [], total: 0, truncated: false };
+      render();
+      return;
+    }
+    var seq = ++fetchSeq;
+    fetch(apiBase + '/api/lifecycle?search=' + encodeURIComponent(F.lifecycleSearch))
+      .then(function (r) { return r.json(); })
+      .then(function (result) {
+        if (seq !== fetchSeq) return;
+        serverLifecycle = result;
+        render();
+      });
+  }
+
+  function buildQueryParams() {
+    var p = [];
+    p.push('page=' + page);
+    p.push('pageSize=' + PAGE_SIZE);
+    p.push('sortCol=' + encodeURIComponent(sortCol));
+    p.push('sortDir=' + sortDir);
+    if (F.sourceEntity !== '__all__') p.push('sourceEntity=' + encodeURIComponent(F.sourceEntity));
+    if (F.targetEntity !== '__all__') p.push('targetEntity=' + encodeURIComponent(F.targetEntity));
+    var ctOn = [];
+    ['Added', 'Modified', 'Deleted'].forEach(function (ct) { if (F.changeTypes[ct]) ctOn.push(ct); });
+    p.push('changeTypes=' + ctOn.join(','));
+    if (F.search)       p.push('search='       + encodeURIComponent(F.search));
+    if (F.dateFrom)     p.push('dateFrom='     + F.dateFrom);
+    if (F.dateTo)       p.push('dateTo='       + F.dateTo);
+    if (F.changesMin)   p.push('changesMin='   + F.changesMin);
+    if (F.changesMax)   p.push('changesMax='   + F.changesMax);
+    if (F.changesAttr && F.changesAttr !== '__all__') p.push('changesAttr=' + encodeURIComponent(F.changesAttr));
+    if (F.changesValue) p.push('changesValue=' + encodeURIComponent(F.changesValue));
+    if (F.rolesMin)     p.push('rolesMin='     + F.rolesMin);
+    if (F.rolesMax)     p.push('rolesMax='     + F.rolesMax);
+    if (F.rolesDir !== '__all__') p.push('rolesDir=' + F.rolesDir);
+    return p.join('&');
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // FILE MODE — local data queries
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  function getUniqueValues(key) {
+    var seen = {};
+    data.forEach(function (d) { seen[d[key] || 'Unknown'] = 1; });
+    return Object.keys(seen).sort();
+  }
+
+  function getEntityLinks() {
+    var s2t = {}, t2s = {};
+    data.forEach(function (d) {
+      var s = d.sourceEntity || 'Unknown', t = d.targetEntity || 'Unknown';
+      if (!s2t[s]) s2t[s] = {};
+      if (!t2s[t]) t2s[t] = {};
+      s2t[s][t] = 1; t2s[t][s] = 1;
+    });
+    return { s2t: s2t, t2s: t2s };
+  }
+
+  function getFilteredAttrs() {
+    if (F.targetEntity === '__all__') return [];
+    var seen = {};
+    data.forEach(function (d) {
+      if ((d.targetEntity || 'Unknown') !== F.targetEntity) return;
+      if (F.sourceEntity !== '__all__' && (d.sourceEntity || 'Unknown') !== F.sourceEntity) return;
+      var ch = d.changes || {};
+      for (var k in ch) seen[k] = 1;
+    });
+    return Object.keys(seen).sort();
+  }
+
+  function countRoles(roles) {
+    if (!roles || !roles.length) return 0;
+    if (F.rolesDir === '__all__') return roles.length;
+    return roles.filter(function (r) { return r.direction === F.rolesDir; }).length;
+  }
+
+  function matchChangesValue(d) {
+    if (!F.changesValue) return true;
+    var ch = d.changes || {}, q = F.changesValue.toLowerCase();
+    for (var k in ch) {
+      if (ch[k] != null && String(ch[k]).toLowerCase().indexOf(q) >= 0) return true;
+    }
+    return false;
+  }
+
+  function getFiltered() {
+    return data.filter(function (d) {
+      if (F.sourceEntity !== '__all__' && (d.sourceEntity || 'Unknown') !== F.sourceEntity) return false;
+      if (F.targetEntity !== '__all__' && (d.targetEntity || 'Unknown') !== F.targetEntity) return false;
+      var norm = (d.changeType || '');
+      norm = norm.charAt(0).toUpperCase() + norm.slice(1).toLowerCase();
+      if (!F.changeTypes[norm]) return false;
+      if (F.search) {
+        var q = F.search.toLowerCase();
+        var hay = [d.ownerName, d.ownerIdentifier, d.fileName,
+                   d.sourceEntity, d.targetEntity, d.resourceType, d.resourceTypeDir]
+          .filter(Boolean).join(' ').toLowerCase();
+        if (hay.indexOf(q) < 0) return false;
+      }
+      if (F.dateFrom && d.fileDate && d.fileDate < F.dateFrom) return false;
+      if (F.dateTo   && d.fileDate && d.fileDate > F.dateTo + 'T23:59:59') return false;
+      var nch = Object.keys(d.changes || {}).length;
+      if (F.changesMin !== '' && nch < parseInt(F.changesMin, 10)) return false;
+      if (F.changesMax !== '' && nch > parseInt(F.changesMax, 10)) return false;
+      if (F.changesAttr && F.changesAttr !== '__all__' && !(F.changesAttr in (d.changes || {}))) return false;
+      if (!matchChangesValue(d)) return false;
+      var nrl = countRoles(d.roles);
+      if (F.rolesDir !== '__all__' && nrl === 0) return false;
+      if (F.rolesMin !== '' && nrl < parseInt(F.rolesMin, 10)) return false;
+      if (F.rolesMax !== '' && nrl > parseInt(F.rolesMax, 10)) return false;
+      return true;
+    }).sort(function (a, b) {
+      var va, vb;
+      if (sortCol === 'changesCount') { va = Object.keys(a.changes || {}).length; vb = Object.keys(b.changes || {}).length; }
+      else if (sortCol === 'rolesCount') { va = countRoles(a.roles); vb = countRoles(b.roles); }
+      else { va = a[sortCol] || ''; vb = b[sortCol] || ''; if (typeof va === 'string') va = va.toLowerCase(); if (typeof vb === 'string') vb = vb.toLowerCase(); }
+      if (va < vb) return sortDir === 'asc' ? -1 :  1;
+      if (va > vb) return sortDir === 'asc' ?  1 : -1;
+      return 0;
+    });
+  }
+
+  function getStats(filtered) {
+    var s = { total: filtered.length, added: 0, modified: 0, deleted: 0, rtSeen: {} };
+    filtered.forEach(function (d) {
+      var ct = (d.changeType || '').toLowerCase();
+      if      (ct === 'added')    s.added++;
+      else if (ct === 'modified') s.modified++;
+      else if (ct === 'deleted')  s.deleted++;
+      s.rtSeen[d.resourceType || d.resourceTypeDir || '?'] = 1;
+    });
+    s.rtCount = Object.keys(s.rtSeen).length;
+    return s;
+  }
+
+  function getTimeline(filtered) {
+    var map = {};
+    filtered.forEach(function (d) {
+      var dk = d.fileDate ? d.fileDate.substring(0, 10) : '?';
+      if (!map[dk]) map[dk] = { added: 0, modified: 0, deleted: 0 };
+      var ct = (d.changeType || '').toLowerCase();
+      if      (ct === 'added')    map[dk].added++;
+      else if (ct === 'modified') map[dk].modified++;
+      else if (ct === 'deleted')  map[dk].deleted++;
+    });
+    return Object.keys(map).sort().map(function (k) {
+      var v = map[k];
+      return { date: k, added: v.added, modified: v.modified, deleted: v.deleted, total: v.added + v.modified + v.deleted };
+    });
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // EXPORT
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  function exportCSV() {
+    var fl   = serverMode ? (serverResult ? serverResult.records : []) : getFiltered();
+    var rows = [['Date','Type','Source','Target','Owner','Identifier','Changes','RolesAdd','RolesRemove','File','ResourceType']];
+    fl.forEach(function (d) {
+      var ch    = d.changes || {}, roles = d.roles || [];
+      var ra = roles.filter(function (r) { return r.direction === 'add';    }).map(function (r) { return r.name; }).join('; ');
+      var rr = roles.filter(function (r) { return r.direction === 'remove'; }).map(function (r) { return r.name; }).join('; ');
+      var cs = Object.keys(ch).map(function (k) { return k + '=' + ch[k]; }).join('; ');
+      rows.push([fmtDate(d.fileDate), d.changeType || '', d.sourceEntity || '',
+                 d.targetEntity || '', d.ownerName || '', d.ownerIdentifier || '',
+                 cs, ra, rr, d.fileName || '', d.resourceType || d.resourceTypeDir || '']);
+    });
+    var csv = rows.map(function (r) {
+      return r.map(function (c) { return '"' + String(c).replace(/"/g, '""') + '"'; }).join(',');
+    }).join('\n');
+    var now = new Date();
+    var ts  = now.getFullYear() + '-' + ('0'+(now.getMonth()+1)).slice(-2) + '-' + ('0'+now.getDate()).slice(-2)
+            + '_' + ('0'+now.getHours()).slice(-2) + '-' + ('0'+now.getMinutes()).slice(-2) + '-' + ('0'+now.getSeconds()).slice(-2);
+    var a = document.createElement('a');
+    a.href = URL.createObjectURL(new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8' }));
+    a.download = 'provisioning_export_' + ts + '.csv';
+    a.click();
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // UTILITIES
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  function esc(s) {
+    if (s == null) return '';
+    var str = String(s), o = '';
+    for (var i = 0; i < str.length; i++) {
+      var c = str[i];
+      if      (c === '&')  o += '&amp;';
+      else if (c === '<')  o += '&lt;';
+      else if (c === '>')  o += '&gt;';
+      else if (c === '"')  o += '&quot;';
+      else if (c === "'")  o += '&#39;';
+      else                 o += c;
+    }
+    return o;
+  }
+
+  function escHL(s, q) {
+    if (!q || s == null) return esc(s);
+    var str = String(s), sl = str.toLowerCase(), ql = q.toLowerCase(), o = '', i = 0;
+    while (i < str.length) {
+      var idx = sl.indexOf(ql, i);
+      if (idx < 0) { o += esc(str.substring(i)); break; }
+      o += esc(str.substring(i, idx)) + '<mark>' + esc(str.substring(idx, idx + ql.length)) + '</mark>';
+      i = idx + ql.length;
+    }
+    return o;
+  }
+
+  function fmtDate(iso) {
+    if (!iso) return '\u2014';
+    try {
+      var d = new Date(iso);
+      return d.toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit', year: 'numeric' })
+           + ' ' + d.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
+    } catch (e) { return iso; }
+  }
+
+  function fmtDateShort(iso) {
+    if (!iso) return '?';
+    try { return new Date(iso).toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit', year: 'numeric' }); }
+    catch (e) { return iso; }
+  }
+
+  function badgeClass(ct) {
+    var c = (ct || '').toLowerCase();
+    return c === 'added' ? 'badge-add' : c === 'deleted' ? 'badge-del' : 'badge-mod';
+  }
+
+  function sortArrow(col) {
+    return sortCol === col ? (sortDir === 'asc' ? ' \u25B2' : ' \u25BC') : '';
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // HTML BUILDERS
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  function buildHeader(total, stats) {
+    var h = "<div class='hdr'>"
+          + "<div class='logo'>UC</div>"
+          + "<div><h1>Provisioning LogViewer</h1><div class='hdr-sub'>Netwrix Identity Manager"
+          + (serverMode ? " \u2014 <span style='color:var(--add);font-size:9px'>LIVE</span>" : '')
+          + "</div></div>"
+          + "<div class='hdr-right'>"
+          + "<div class='hdr-stats'>"
+          + "<span><span class='dot' style='background:var(--add)'></span>" + (stats.added    || 0) + "</span>"
+          + "<span><span class='dot' style='background:var(--mod)'></span>" + (stats.modified || 0) + "</span>"
+          + "<span><span class='dot' style='background:var(--del)'></span>" + (stats.deleted  || 0) + "</span>"
+          + "</div>";
+    if (activeTab === 'orders') {
+      h += "<button class='btn-ex' id='btnExport'>&#x2B07; Export"
+        + (serverMode ? " page" : " filtered (" + total + ")") + "</button>";
+    }
+    h += "</div></div>";
+    return h;
+  }
+
+  function buildTabs() {
+    var defs = [['orders', 'Orders'], ['lifecycle', 'Owner Lifecycle']];
+    var h = "<div class='tabs'>";
+    defs.forEach(function (t) {
+      h += "<div class='tab" + (activeTab === t[0] ? ' active' : '') + "' data-tab='" + t[0] + "'>" + t[1] + "</div>";
+    });
+    return h + "</div>";
+  }
+
+  function buildStats(stats) {
+    function card(label, value, sub, color) {
+      return "<div class='stat-card'><div class='stat-label'>" + label + "</div>"
+           + "<div class='stat-value' style='color:" + color + "'>" + (value || 0).toLocaleString() + "</div>"
+           + "<div class='stat-sub'>" + sub + "</div></div>";
+    }
+    var t = stats.total || 0;
+    var pct = function (n) { return t > 0 ? (((n || 0) / t) * 100).toFixed(1) + '%' : '0%'; };
+    return "<div class='stats-row'>"
+         + card('Total',  t,               (stats.rtCount || 0) + ' RT(s)', 'var(--ac)')
+         + card('Joiner', stats.added,    pct(stats.added),    'var(--add)')
+         + card('Mover',  stats.modified, pct(stats.modified), 'var(--mod)')
+         + card('Leaver', stats.deleted,  pct(stats.deleted),  'var(--del)')
+         + "</div>";
+  }
+
+  function buildTimeline(timeline) {
+    if (!timeline || !timeline.length) return '';
+    var tlMax = Math.max.apply(null, timeline.map(function (t) { return t.total; }));
+    if (tlMax < 1) tlMax = 1;
+    var label = '';
+    if (F.dateFrom && F.dateTo) {
+      label = F.dateFrom === F.dateTo ? ' \u2014 ' + F.dateFrom : ' \u2014 ' + F.dateFrom + ' to ' + F.dateTo;
+    }
+    var h = "<div class='timeline'><h2 style='user-select:none'>Timeline" + label;
+    if (F.dateFrom) h += " <span style='cursor:pointer;font-size:10px;color:var(--ac)' id='tlClear'>(clear)</span>";
+    h += "</h2><div class='timeline-chart'>";
+    timeline.forEach(function (t, i) {
+      var hPct      = (t.total / tlMax) * 100;
+      var showLabel = timeline.length <= 15 || i === 0 || i === timeline.length - 1
+                   || i % Math.max(1, Math.ceil(timeline.length / 12)) === 0;
+      var inRange   = F.dateFrom && F.dateTo && t.date >= F.dateFrom && t.date <= F.dateTo;
+      var isFirst   = inRange && t.date === F.dateFrom;
+      var isLast    = inRange && t.date === F.dateTo;
+      var isSingle  = isFirst && isLast;
+      var rs = '';
+      if (inRange) {
+        rs = 'background:var(--acd2);';
+        if      (isSingle) rs += 'border-radius:4px;border:2px solid var(--ac);';
+        else if (isFirst)  rs += 'border-radius:4px 0 0 4px;border:2px solid var(--ac);border-right:none;';
+        else if (isLast)   rs += 'border-radius:0 4px 4px 0;border:2px solid var(--ac);border-left:none;';
+        else               rs += 'border-top:2px solid var(--ac);border-bottom:2px solid var(--ac);';
+      }
+      h += "<div class='tl-bar-group' data-date='" + t.date + "' style='" + rs + "'>"
+         + "<div class='tl-tooltip'><div style='font-weight:600;margin-bottom:2px'>" + t.date + "</div>"
+         + "<div style='color:var(--add)'>+" + t.added + "</div><div style='color:var(--mod)'>~" + t.modified + "</div>"
+         + "<div style='color:var(--del)'>-" + t.deleted + "</div></div>"
+         + "<div class='tl-bars' style='height:" + hPct + "%'>";
+      if (t.deleted  > 0) h += "<div class='tl-bar' style='background:var(--del);height:" + ((t.deleted  / t.total) * 100) + "%'></div>";
+      if (t.modified > 0) h += "<div class='tl-bar' style='background:var(--mod);height:" + ((t.modified / t.total) * 100) + "%'></div>";
+      if (t.added    > 0) h += "<div class='tl-bar' style='background:var(--add);height:" + ((t.added    / t.total) * 100) + "%'></div>";
+      h += "</div>";
+      if (showLabel) h += "<div class='tl-date-label'>" + t.date.substring(5) + "</div>";
+      h += "</div>";
+    });
+    return h + "</div></div>";
+  }
+
+  function countActiveFilters() {
+    var n = 0;
+    if (F.sourceEntity !== '__all__') n++;
+    if (F.targetEntity !== '__all__') n++;
+    if (F.dateFrom) n++;
+    if (F.dateTo) n++;
+    if (!F.changeTypes.Added || !F.changeTypes.Modified || !F.changeTypes.Deleted) n++;
+    if (F.search) n++;
+    if (F.changesMin) n++;
+    if (F.changesMax) n++;
+    if (F.changesAttr && F.changesAttr !== '__all__') n++;
+    if (F.changesValue) n++;
+    if (F.rolesDir !== '__all__') n++;
+    if (F.rolesMin) n++;
+    if (F.rolesMax) n++;
+    return n;
+  }
+
+  function resetFilters() {
+    F.sourceEntity  = '__all__'; F.targetEntity  = '__all__';
+    F.dateFrom      = '';        F.dateTo        = '';
+    F.changeTypes   = { Added: true, Modified: true, Deleted: true };
+    F.search        = '';
+    F.changesMin    = '';        F.changesMax    = '';
+    F.changesAttr   = '__all__'; F.changesValue  = '';
+    F.rolesDir      = '__all__'; F.rolesMin      = ''; F.rolesMax = '';
+    page = 0;
+    triggerRender();
+  }
+
+  function buildFilterPanel(ses, tes, links, allAttrs) {
+    var active = countActiveFilters();
+    var lT = F.sourceEntity !== '__all__' && links.s2t[F.sourceEntity] ? links.s2t[F.sourceEntity] : null;
+    var lS = F.targetEntity !== '__all__' && links.t2s[F.targetEntity] ? links.t2s[F.targetEntity] : null;
+    var attrDisabled = F.targetEntity === '__all__';
+
+    var h = "<div class='fp'>"
+          + "<div class='fp-hdr'>"
+          + "<span class='fp-title'>Filters</span>"
+          + "<span class='fp-badge" + (active > 0 ? " visible" : "") + "'>" + active + " active</span>"
+          + "<button class='btn-reset' id='btnReset'>\u2715 Reset</button>"
+          + "</div><div class='fp-rows'>";
+
+    // Date range
+    h += "<div class='fp-group'><span class='fp-lbl'>Date range</span>"
+       + "<div class='fp-range'>"
+       + "<input type='date' id='fDateFrom' value='" + F.dateFrom + "'>"
+       + "<span class='fp-range-sep'>\u2192</span>"
+       + "<input type='date' id='fDateTo' value='" + F.dateTo + "'>"
+       + "</div></div>";
+
+    // Search (2nd — mirrors Owner being the 2nd column)
+    h += "<div class='fp-group wide'><span class='fp-lbl'>Search</span>"
+       + "<input type='text' id='fSearch' placeholder='Owner, entity, file\u2026' value='" + esc(F.search) + "'>"
+       + "</div>";
+
+    // Change type
+    var ctDefs = [['Added','Added','active-add'],['Modified','Modified','active-mod'],['Deleted','Deleted','active-del']];
+    h += "<div class='fp-group'><span class='fp-lbl'>Change type</span><div class='ct-toggles'>";
+    ctDefs.forEach(function (ct) {
+      h += "<span class='ct-toggle" + (F.changeTypes[ct[0]] ? ' ' + ct[2] : '') + "' data-ct='" + ct[0] + "'>" + ct[1] + "</span>";
+    });
+    h += "</div></div>";
+
+    // Separator
+    h += "<div class='fp-vsep'></div>";
+
+    // Source entity
+    h += "<div class='fp-group'><span class='fp-lbl'>Source entity</span>"
+       + "<select id='fSourceEntity'><option value='__all__'>All sources</option>";
+    ses.forEach(function (v) {
+      var linked = lS ? !!lS[v] : false;
+      var style  = lS ? (linked ? " style='font-weight:600'" : " style='color:var(--tx3)'") : '';
+      h += "<option value='" + esc(v) + "'" + (F.sourceEntity === v ? ' selected' : '') + style + ">" + (linked ? '\u2714 ' : '') + esc(v) + "</option>";
+    });
+    h += "</select></div>";
+
+    // Target entity
+    h += "<div class='fp-group'><span class='fp-lbl'>Target entity</span>"
+       + "<select id='fTargetEntity'><option value='__all__'>All targets</option>";
+    tes.forEach(function (v) {
+      var linked = lT ? !!lT[v] : false;
+      var style  = lT ? (linked ? " style='font-weight:600'" : " style='color:var(--tx3)'") : '';
+      h += "<option value='" + esc(v) + "'" + (F.targetEntity === v ? ' selected' : '') + style + ">" + (linked ? '\u2714 ' : '') + esc(v) + "</option>";
+    });
+    h += "</select></div>";
+
+    // Separator
+    h += "<div class='fp-vsep'></div>";
+
+    // Changes — attr select first so min/max row lines up with Roles' min/max row
+    h += "<div class='fp-group'><span class='fp-lbl'>Changes</span>"
+       + "<select id='fChangesAttr'" + (attrDisabled ? " disabled style='opacity:.5'" : '') + ">";
+    if (attrDisabled) {
+      h += "<option value='__all__'>Select target first</option>";
+    } else {
+      h += "<option value='__all__'>Any attribute</option>";
+      allAttrs.forEach(function (a) { h += "<option value='" + esc(a) + "'" + (F.changesAttr === a ? ' selected' : '') + ">" + esc(a) + "</option>"; });
+    }
+    h += "</select>"
+       + "<div class='fp-minmax'>"
+       + "<input type='number' id='fChangesMin' placeholder='min' value='" + esc(F.changesMin) + "' min='0'>"
+       + "<input type='number' id='fChangesMax' placeholder='max' value='" + esc(F.changesMax) + "' min='0'>"
+       + "</div>"
+       + "<input type='text' id='fChangesValue' placeholder='Search value\u2026' value='" + esc(F.changesValue) + "'>"
+       + "</div>";
+
+    // Roles — dir select first so min/max row lines up with Changes' min/max row
+    h += "<div class='fp-group'><span class='fp-lbl'>Roles</span>"
+       + "<select id='fRolesDir'>"
+       + "<option value='__all__'" + (F.rolesDir === '__all__' ? ' selected' : '') + ">All directions</option>"
+       + "<option value='add'"     + (F.rolesDir === 'add'     ? ' selected' : '') + ">Added</option>"
+       + "<option value='remove'"  + (F.rolesDir === 'remove'  ? ' selected' : '') + ">Removed</option>"
+       + "</select>"
+       + "<div class='fp-minmax'>"
+       + "<input type='number' id='fRolesMin' placeholder='min' value='" + esc(F.rolesMin) + "' min='0'>"
+       + "<input type='number' id='fRolesMax' placeholder='max' value='" + esc(F.rolesMax) + "' min='0'>"
+       + "</div></div>";
+
+    h += "</div></div>"; // fp-rows + fp
+    return h;
+  }
+
+  function buildRolesSection(roles) {
+    function section(arr, cls, label, color) {
+      if (!arr.length) return '';
+      var o = "<div style='margin-top:8px'><div class='roles-label' style='color:" + color + "'>" + label + " (" + arr.length + ")</div><div class='roles-list'>";
+      arr.forEach(function (r) { o += "<span class='role-chip " + cls + "' title='" + esc(r.key) + "'>" + esc(r.name) + "</span>"; });
+      return o + "</div></div>";
+    }
+    var ra = roles.filter(function (r) { return r.direction === 'add';     });
+    var rr = roles.filter(function (r) { return r.direction === 'remove';  });
+    var ru = roles.filter(function (r) { return r.direction === 'unknown'; });
+    return section(ra, 'role-add', 'Roles Added',    'var(--add)')
+         + section(rr, 'role-rem', 'Roles Removed',  'var(--del)')
+         + section(ru, 'role-unk', 'Roles (unknown)', 'var(--tx2)');
+  }
+
+  function buildDetailRow(d, gi) {
+    var ch = d.changes || {}, ck = Object.keys(ch), roles = d.roles || [];
+    var h = "<tr><td colspan='7' style='padding:0'><div class='det'>"
+          + "<div class='det-meta'>File: " + esc(d.fileName || '\u2014')
+          + " \u00B7 RT: " + esc(d.resourceType || d.resourceTypeDir || '\u2014') + "</div>";
+    if (ck.length > 0) {
+      h += "<div class='changes-grid'>";
+      ck.forEach(function (k) {
+        var v = ch[k], isHl = F.changesAttr && F.changesAttr !== '__all__' && k === F.changesAttr;
+        var vStr = v == null ? 'null' : String(v);
+        h += "<div class='change-item" + (isHl ? ' hl' : '') + "'>"
+           + "<span class='change-key'>" + esc(k) + "</span>"
+           + "<span class='change-val" + (v == null ? ' null-val' : '') + "' title='" + esc(v) + "'>" + escHL(vStr, F.changesValue) + "</span></div>";
+      });
+      h += "</div>";
+    } else {
+      h += "<div style='color:var(--tx3);font-size:11px'>No changes.</div>";
+    }
+    h += buildRolesSection(roles);
+    if (d.owner && typeof d.owner === 'object' && Object.keys(d.owner).length > 0) {
+      h += "<button class='btn-owner' data-owner-idx='" + gi + "'>\uD83D\uDC64 Owner details</button>";
+    }
+    return h + "</div></td></tr>";
+  }
+
+  function buildTableRows(pageData, pageOffset) {
+    var h = '';
+    pageData.forEach(function (d, i) {
+      var gi    = pageOffset + i;
+      var bc    = badgeClass(d.changeType);
+      var ch    = d.changes || {}, roles = d.roles || [];
+      var ra    = roles.filter(function (r) { return r.direction === 'add';     });
+      var rr    = roles.filter(function (r) { return r.direction === 'remove';  });
+      var ru    = roles.filter(function (r) { return r.direction === 'unknown'; });
+      var isExp = !!expanded[gi];
+      h += "<tr data-idx='" + gi + "'>"
+         + "<td>" + fmtDate(d.fileDate) + "</td>"
+         + "<td><div style='font-weight:500'>" + esc(d.ownerName || '\u2014') + "</div>"
+         + (d.ownerIdentifier ? "<div style='font-size:9px;color:var(--tx3)'>" + esc(d.ownerIdentifier) + "</div>" : '')
+         + "</td>"
+         + "<td><span class='badge " + bc + "'>" + esc(d.changeType || '?') + "</span></td>"
+         + "<td><span class='et-tag' title='" + esc(d.sourceEntity) + "'>" + esc(d.sourceEntity || '\u2014') + "</span></td>"
+         + "<td><span class='et-tag' title='" + esc(d.targetEntity) + "'>" + esc(d.targetEntity || '\u2014') + "</span></td>"
+         + "<td style='color:var(--tx3)'>" + Object.keys(ch).length + " <span style='font-size:9px'>" + (isExp ? '\u25B2' : '\u25BC') + "</span></td>"
+         + "<td style='color:var(--tx3)'>";
+      if (roles.length > 0) {
+        var parts = [];
+        if (ra.length) parts.push("<span style='color:var(--add)'>+" + ra.length + "</span>");
+        if (rr.length) parts.push("<span style='color:var(--del)'>-" + rr.length + "</span>");
+        if (ru.length) parts.push("<span style='color:var(--tx2)'>"  + ru.length + "</span>");
+        h += parts.join('/');
+      } else { h += '\u2014'; }
+      h += "</td></tr>";
+      if (isExp) h += buildDetailRow(d, gi);
+    });
+    return h;
+  }
+
+  function buildPagination(total) {
+    if (total <= PAGE_SIZE) return '';
+    var tp = Math.ceil(total / PAGE_SIZE);
+    return "<div class='pagination'><span>Page " + (page + 1) + "/" + tp + " (" + total + ")</span>"
+         + "<div class='page-btns'>"
+         + "<button data-pg='0'"          + (page === 0     ? ' disabled' : '') + ">&#171;</button>"
+         + "<button data-pg='" + (page-1) + "'" + (page === 0     ? ' disabled' : '') + ">&#8249;</button>"
+         + "<button data-pg='" + (page+1) + "'" + (page >= tp-1   ? ' disabled' : '') + ">&#8250;</button>"
+         + "<button data-pg='" + (tp-1)   + "'" + (page >= tp-1   ? ' disabled' : '') + ">&#187;</button>"
+         + "</div></div>";
+  }
+
+  function buildOrders(pageData, stats, timeline, total, ses, tes, links, allAttrs) {
+    var h = buildStats(stats)
+          + buildTimeline(timeline)
+          + buildFilterPanel(ses, tes, links, allAttrs)
+          + "<div class='table-wrap' style='max-height:70vh;overflow-y:auto'><table><thead>"
+          + "<tr>"
+          + "<th data-sort='fileDate'>Date"         + sortArrow('fileDate')      + "</th>"
+          + "<th data-sort='ownerName'>Owner"        + sortArrow('ownerName')     + "</th>"
+          + "<th data-sort='changeType'>Type"        + sortArrow('changeType')    + "</th>"
+          + "<th data-sort='sourceEntity'>Source"    + sortArrow('sourceEntity')  + "</th>"
+          + "<th data-sort='targetEntity'>Target"    + sortArrow('targetEntity')  + "</th>"
+          + "<th data-sort='changesCount'>Changes"   + sortArrow('changesCount')  + "</th>"
+          + "<th data-sort='rolesCount'>Roles"       + sortArrow('rolesCount')    + "</th>"
+          + "</tr>"
+          + "</thead><tbody>"
+          + (pageData.length === 0
+              ? "<tr><td colspan='7' class='empty'>No provisioning orders match your filters.</td></tr>"
+              : buildTableRows(pageData, page * PAGE_SIZE))
+          + "</tbody></table>"
+          + buildPagination(total)
+          + "</div>";
+    return h;
+  }
+
+  function buildLifecycle() {
+    var h = "<div class='lc-search'>"
+          + "<input type='text' id='lcSearch' placeholder='Search owner by name or identifier...' value='"
+          + esc(F.lifecycleSearch) + "'></div>";
+
+    if (!F.lifecycleSearch || F.lifecycleSearch.length < 2) {
+      return h + "<div class='empty'>Type at least 2 characters to search for an owner.</div>";
+    }
+
+    var list, total, truncated;
+
+    if (serverMode) {
+      if (!serverLifecycle) return h + "<div class='empty'>Loading\u2026</div>";
+      list      = serverLifecycle.owners;
+      total     = serverLifecycle.total;
+      truncated = serverLifecycle.truncated;
+    } else {
+      var q = F.lifecycleSearch.toLowerCase();
+      var owners = {};
+      data.forEach(function (d) {
+        var key  = d.ownerIdentifier || d.ownerName || 'Unknown';
+        var name = (d.ownerName || 'Unknown').toLowerCase();
+        var id   = (d.ownerIdentifier || '').toLowerCase();
+        if (name.indexOf(q) < 0 && id.indexOf(q) < 0) return;
+        if (!owners[key]) owners[key] = { name: d.ownerName || 'Unknown', id: d.ownerIdentifier || '', orders: [] };
+        owners[key].orders.push(d);
+      });
+      list = Object.keys(owners).map(function (k) { return owners[k]; })
+        .sort(function (a, b) { return a.name.toLowerCase() < b.name.toLowerCase() ? -1 : 1; });
+      list.forEach(function (ow) { ow.orders.sort(function (a, b) { return (a.fileDate || '').localeCompare(b.fileDate || ''); }); });
+      total     = list.length;
+      truncated = list.length > 50;
+      list      = list.slice(0, 50);
+    }
+
+    if (!list || !list.length) return h + "<div class='empty'>No owners match '" + esc(F.lifecycleSearch) + "'.</div>";
+
+    h += "<div style='font-size:11px;color:var(--tx3);margin-bottom:10px'>" + total + " owner(s) found</div>";
+    list.forEach(function (ow) {
+      h += "<div class='lc-card'><div class='lc-name'>" + esc(ow.name) + "</div><div class='lc-id'>" + esc(ow.id) + "</div>";
+      (ow.orders || []).forEach(function (d) {
+        var bc = badgeClass(d.changeType), roles = d.roles || [];
+        var ra = roles.filter(function (r) { return r.direction === 'add';    }).length;
+        var rr = roles.filter(function (r) { return r.direction === 'remove'; }).length;
+        var nch = Object.keys(d.changes || {}).length;
+        h += "<div class='lc-row'><span class='lc-date'>" + fmtDateShort(d.fileDate) + "</span>"
+           + "<span class='badge " + bc + "' style='font-size:9px'>" + esc(d.changeType || '?') + "</span>"
+           + "<div class='lc-entities'><span class='et-tag'>" + esc(d.sourceEntity || '?') + "</span>"
+           + "<span style='color:var(--tx3)'>\u2192</span><span class='et-tag'>" + esc(d.targetEntity || '?') + "</span></div>"
+           + "<span style='color:var(--tx3);font-size:10px;font-family:var(--mo)'>" + nch + " attr</span>";
+        if (ra > 0 || rr > 0) {
+          h += "<span class='lc-roles'>";
+          if (ra > 0) h += "<span style='color:var(--add)'>+" + ra + "</span> ";
+          if (rr > 0) h += "<span style='color:var(--del)'>-" + rr + "</span>";
+          h += "</span>";
+        }
+        h += "</div>";
+      });
+      h += "</div>";
+    });
+    if (truncated) h += "<div class='empty'>Showing first 50 owners. Refine your search.</div>";
+    return h;
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // RENDER
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  function render() {
+    var focusId  = document.activeElement ? document.activeElement.id : '';
+    var focusSel = (document.activeElement && document.activeElement.selectionStart != null)
+                 ? document.activeElement.selectionStart : -1;
+    var tw = document.querySelector('.table-wrap'), twScrl = tw ? tw.scrollTop : 0;
+
+    var pageData, stats, timeline, total, ses, tes, links, allAttrs;
+    var emptyStats = { total: 0, added: 0, modified: 0, deleted: 0, rtCount: 0 };
+
+    if (serverMode) {
+      ses      = serverMeta.sourceEntities  || [];
+      tes      = serverMeta.targetEntities  || [];
+      links    = serverMeta.entityLinks     || { s2t: {}, t2s: {} };
+      allAttrs = (serverResult && serverResult.availableAttrs) || [];
+      total    = serverResult ? serverResult.total    : 0;
+      stats    = serverResult ? serverResult.stats    : emptyStats;
+      timeline = serverResult ? serverResult.timeline : [];
+      pageData = serverResult ? serverResult.records  : [];
+
+      // Show initial loading state before first fetch
+      if (!serverResult && activeTab === 'orders') {
+        document.getElementById('app').innerHTML =
+          buildHeader(0, emptyStats) + buildTabs()
+          + "<div class='empty'>Loading\u2026</div>";
+        return;
+      }
+    } else {
+      var localFiltered = getFiltered();
+      ses      = getUniqueValues('sourceEntity');
+      tes      = getUniqueValues('targetEntity');
+      links    = getEntityLinks();
+      allAttrs = getFilteredAttrs();
+      total    = localFiltered.length;
+      stats    = getStats(localFiltered);
+      timeline = getTimeline(localFiltered);
+      var tp   = Math.max(1, Math.ceil(total / PAGE_SIZE));
+      if (page >= tp) page = tp - 1;
+      if (page < 0)   page = 0;
+      pageData = localFiltered.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE);
+    }
+
+    // Reset stale attribute filter
+    if (F.changesAttr && F.changesAttr !== '__all__' && allAttrs.indexOf(F.changesAttr) < 0) {
+      F.changesAttr = '__all__';
+    }
+
+    var content = activeTab === 'orders'
+      ? buildOrders(pageData, stats, timeline, total, ses, tes, links, allAttrs)
+      : buildLifecycle();
+
+    document.getElementById('app').innerHTML = buildHeader(total, stats) + buildTabs() + content;
+
+    var tw2 = document.querySelector('.table-wrap');
+    if (tw2) tw2.scrollTop = twScrl;
+    if (focusId) {
+      var fe = document.getElementById(focusId);
+      if (fe) { fe.focus(); if (focusSel >= 0) try { fe.setSelectionRange(focusSel, focusSel); } catch (e) {} }
+    }
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // MODAL
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  function openOwnerModal(d) {
+    var ow = d.owner || {}, keys = Object.keys(ow);
+    var h  = "<h2>\uD83D\uDC64 Owner Details</h2>"
+           + "<div class='modal-sub'>" + esc(d.ownerName || 'Unknown')
+           + (d.ownerIdentifier ? ' \u00B7 ' + esc(d.ownerIdentifier) : '') + "</div>";
+    if (keys.length > 0) {
+      h += "<div class='owner-grid'>";
+      keys.forEach(function (k) {
+        var v = ow[k];
+        if (v != null && typeof v === 'object') v = JSON.stringify(v);
+        h += "<div class='owner-item'><span class='owner-key'>" + esc(k) + "</span>"
+           + "<span class='owner-val' title='" + esc(v) + "'>" + esc(v == null ? 'null' : v) + "</span></div>";
+      });
+      h += "</div>";
+    } else { h += "<div style='color:var(--tx3);font-size:11px;padding:12px 0'>No owner data.</div>"; }
+    h += "<button class='btn-modal-close' id='modalClose'>Close</button>";
+    document.getElementById('modal').innerHTML = h;
+    document.getElementById('modalBg').classList.add('open');
+  }
+
+  function closeModal() { document.getElementById('modalBg').classList.remove('open'); }
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // EVENTS — bound once, delegated to document
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  function initEvents() {
+    var debounceTimer;
+    var tlDrag = { active: false, start: null, end: null };
+
+    document.addEventListener('click', function (ev) {
+      var t = ev.target;
+      if (t.id === 'modalClose' || t.id === 'modalBg') { closeModal(); return; }
+
+      var tabEl = t.closest && t.closest('[data-tab]');
+      if (tabEl) {
+        activeTab = tabEl.getAttribute('data-tab');
+        page = 0;
+        triggerRender();
+        return;
+      }
+
+      if (t.id === 'btnExport') { exportCSV(); return; }
+      if (t.id === 'btnReset')  { resetFilters(); return; }
+
+      var thEl = t.closest && t.closest('th[data-sort]');
+      if (thEl) {
+        var col = thEl.getAttribute('data-sort');
+        sortDir = sortCol === col ? (sortDir === 'asc' ? 'desc' : 'asc') : 'asc';
+        sortCol = col;
+        triggerRender(); return;
+      }
+
+      if (t.classList && t.classList.contains('ct-toggle')) {
+        F.changeTypes[t.getAttribute('data-ct')] ^= true;
+        page = 0; triggerRender(); return;
+      }
+
+      if (t.id === 'tlClear') { F.dateFrom = ''; F.dateTo = ''; page = 0; triggerRender(); return; }
+
+      if (t.classList && t.classList.contains('btn-owner')) {
+        ev.stopPropagation();
+        var gi  = parseInt(t.getAttribute('data-owner-idx'), 10);
+        var src = serverMode ? (serverResult ? serverResult.records : []) : getFiltered();
+        if (src[gi]) openOwnerModal(src[gi]);
+        return;
+      }
+
+      if (t.hasAttribute && t.hasAttribute('data-pg') && !t.disabled) {
+        ev.stopPropagation();
+        page = parseInt(t.getAttribute('data-pg'), 10);
+        triggerRender(); return;
+      }
+
+      var rowEl = t.closest && t.closest('tr[data-idx]');
+      if (rowEl) {
+        var idx   = parseInt(rowEl.getAttribute('data-idx'), 10);
+        var wrap  = rowEl.closest('.table-wrap'), wScrl = wrap ? wrap.scrollTop : 0;
+        var rTop  = rowEl.getBoundingClientRect().top;
+        expanded[idx] = !expanded[idx];
+        render();   // expand/collapse never needs a server refetch
+        var wrap2 = document.querySelector('.table-wrap');
+        if (wrap2) wrap2.scrollTop = wScrl;
+        var row2 = document.querySelector("tr[data-idx='" + idx + "']");
+        if (row2) window.scrollTo(0, (window.pageYOffset || document.documentElement.scrollTop) + (row2.getBoundingClientRect().top - rTop));
+      }
+    });
+
+    document.addEventListener('change', function (ev) {
+      var t = ev.target;
+      switch (t.id) {
+        case 'fSourceEntity':  F.sourceEntity = t.value; page = 0; triggerRender(); break;
+        case 'fTargetEntity':  F.targetEntity = t.value; page = 0; triggerRender(); break;
+        case 'fDateFrom':      F.dateFrom     = t.value; page = 0; triggerRender(); break;
+        case 'fDateTo':        F.dateTo       = t.value; page = 0; triggerRender(); break;
+        case 'fChangesMin':    F.changesMin   = t.value; page = 0; triggerRender(); break;
+        case 'fChangesMax':    F.changesMax   = t.value; page = 0; triggerRender(); break;
+        case 'fChangesAttr':   F.changesAttr  = t.value; page = 0; triggerRender(); break;
+        case 'fRolesDir':      F.rolesDir     = t.value; page = 0; triggerRender(); break;
+        case 'fRolesMin':      F.rolesMin     = t.value; page = 0; triggerRender(); break;
+        case 'fRolesMax':      F.rolesMax     = t.value; page = 0; triggerRender(); break;
+      }
+    });
+
+    document.addEventListener('input', function (ev) {
+      var t = ev.target, val = t.value;
+      clearTimeout(debounceTimer);
+      switch (t.id) {
+        case 'fSearch':
+          debounceTimer = setTimeout(function () { F.search = val; page = 0; triggerRender(); }, 250); break;
+        case 'fChangesValue':
+          debounceTimer = setTimeout(function () { F.changesValue = val; page = 0; triggerRender(); }, 250); break;
+        case 'lcSearch':
+          debounceTimer = setTimeout(function () { F.lifecycleSearch = val; triggerRender(); }, 300); break;
+      }
+    });
+
+    document.addEventListener('mousedown', function (ev) {
+      var bar = ev.target.closest && ev.target.closest('.tl-bar-group[data-date]');
+      if (!bar) return;
+      ev.preventDefault();
+      var d = bar.getAttribute('data-date');
+      tlDrag = { active: true, start: d, end: d };
+      highlightTlRange(d, d);
+    });
+
+    document.addEventListener('mouseover', function (ev) {
+      if (!tlDrag.active) return;
+      var bar = ev.target.closest && ev.target.closest('.tl-bar-group[data-date]');
+      if (!bar) return;
+      tlDrag.end = bar.getAttribute('data-date');
+      highlightTlRange(tlDrag.start, tlDrag.end);
+    });
+
+    document.addEventListener('mouseup', function () {
+      if (!tlDrag.active) return;
+      tlDrag.active = false;
+      var a = tlDrag.start, b = tlDrag.end;
+      if (!a) return;
+      var d1 = a < b ? a : b, d2 = a < b ? b : a;
+      if (F.dateFrom === d1 && F.dateTo === d2) { F.dateFrom = ''; F.dateTo = ''; }
+      else { F.dateFrom = d1; F.dateTo = d2; }
+      page = 0; triggerRender();
+    });
+
+    function highlightTlRange(a, b) {
+      var d1 = a < b ? a : b, d2 = a < b ? b : a;
+      document.querySelectorAll('.tl-bar-group[data-date]').forEach(function (el) {
+        var d = el.getAttribute('data-date'), inR = d >= d1 && d <= d2;
+        var isF = d === d1, isL = d === d2, isS = isF && isL;
+        if (!inR) { el.style.cssText = ''; return; }
+        var s = 'background:var(--acd2);';
+        if      (isS)  s += 'border-radius:4px;border:2px solid var(--ac);';
+        else if (isF)  s += 'border-radius:4px 0 0 4px;border:2px solid var(--ac);border-right:none;';
+        else if (isL)  s += 'border-radius:0 4px 4px 0;border:2px solid var(--ac);border-left:none;';
+        else           s += 'border-top:2px solid var(--ac);border-bottom:2px solid var(--ac);';
+        el.style.cssText = s;
+      });
+    }
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // INIT
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  initEvents();
+
+  if (serverMode) {
+    // Load metadata first (dropdowns), then trigger first data fetch
+    fetch(apiBase + '/api/meta')
+      .then(function (r) { return r.json(); })
+      .then(function (meta) {
+        serverMeta = meta;
+        fetchAndRender();
+      })
+      .catch(function () {
+        document.getElementById('app').innerHTML =
+          "<div class='empty' style='color:var(--del);padding:60px'>"
+          + "Could not connect to the LogViewer server.<br>"
+          + "<span style='font-size:11px;color:var(--tx3)'>Make sure LogViewer.ps1 is still running.</span>"
+          + "</div>";
+      });
+  } else {
+    render();
+  }
+
+}());
+  </script>
+</body>
+</html>
