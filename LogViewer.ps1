@@ -9,7 +9,7 @@ param(
 )
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# SERVE MODE — helper functions (only used when -Serve is passed)
+# SHARED HELPERS
 # ═══════════════════════════════════════════════════════════════════════════════
 
 function Send-Response {
@@ -40,36 +40,92 @@ function Send-JsonResponse {
     Send-Response -Response $Response -Bytes $bytes -ContentType 'application/json; charset=utf-8'
 }
 
-function Get-OrderMeta {
-    param([System.Collections.ArrayList]$Orders)
-    $se   = @{}; $te = @{}
-    $s2t  = @{}; $t2s = @{}
-    foreach ($d in $Orders) {
-        $s = if ($d.sourceEntity) { $d.sourceEntity } else { 'Unknown' }
-        $t = if ($d.targetEntity) { $d.targetEntity } else { 'Unknown' }
-        $se[$s] = 1; $te[$t] = 1
-        if (-not $s2t.ContainsKey($s)) { $s2t[$s] = @{} }
-        if (-not $t2s.ContainsKey($t)) { $t2s[$t] = @{} }
-        $s2t[$s][$t] = $true
-        $t2s[$t][$s] = $true
+# Builds a flat record hash from a raw parsed JSON order object.
+# Used by both file mode (scanning loop) and serve mode (per-query streaming).
+function New-OrderRecord {
+    param($Order, [string]$FileName, [string]$IsoDate, [string]$ResourceTypeDir)
+
+    $record = [ordered]@{
+        fileName            = $FileName
+        fileDate            = $IsoDate
+        resourceTypeDir     = $ResourceTypeDir
+        changeType          = $Order.ChangeType
+        resourceType        = $null
+        sourceEntity        = $null
+        targetEntity        = $null
+        ownerName           = $null
+        ownerIdentifier     = $null
+        resourceDisplayName = $null
+        resourceIdentifier  = $null
+        changes             = @{}
+        roles               = @()
+        owner               = @{}
+        resource            = @{}
     }
-    # Build nested link maps
-    $s2tOut = [ordered]@{}
-    foreach ($sk in ($s2t.Keys | Sort-Object)) {
-        $s2tOut[$sk] = [ordered]@{}
-        foreach ($tk in $s2t[$sk].Keys) { $s2tOut[$sk][$tk] = $true }
+
+    if ($Order.ResourceType) {
+        $rt = $Order.ResourceType
+        $record.resourceType = if ($rt.Identifier) { $rt.Identifier } else { $rt.Id }
+        if ($rt.SourceEntityType) {
+            $record.sourceEntity = if ($rt.SourceEntityType.Identifier) { $rt.SourceEntityType.Identifier } else { $rt.SourceEntityType.Id }
+        }
+        if ($rt.TargetEntityType) {
+            $record.targetEntity = if ($rt.TargetEntityType.Identifier) { $rt.TargetEntityType.Identifier } else { $rt.TargetEntityType.Id }
+        }
     }
-    $t2sOut = [ordered]@{}
-    foreach ($tk in ($t2s.Keys | Sort-Object)) {
-        $t2sOut[$tk] = [ordered]@{}
-        foreach ($sk in $t2s[$tk].Keys) { $t2sOut[$tk][$sk] = $true }
+
+    if ($Order.Owner) {
+        $o = $Order.Owner
+        $record.ownerName = if ($o.InternalDisplayName) { $o.InternalDisplayName }
+                            elseif ($o.DisplayName)     { $o.DisplayName }
+                            elseif ($o.LastFirstName)   { $o.LastFirstName }
+                            else                        { $o.Id }
+        $record.ownerIdentifier = $o.Identifier
+        $ownerHash = [ordered]@{}
+        $o.PSObject.Properties | ForEach-Object { $ownerHash[$_.Name] = $_.Value }
+        $record.owner = $ownerHash
     }
-    return [ordered]@{
-        sourceEntities = @($se.Keys | Sort-Object)
-        targetEntities = @($te.Keys | Sort-Object)
-        entityLinks    = [ordered]@{ s2t = $s2tOut; t2s = $t2sOut }
-        totalOrders    = $Orders.Count
+
+    if ($Order.Resource) {
+        $r = $Order.Resource
+        $record.resourceDisplayName = if ($r.InternalDisplayName) { $r.InternalDisplayName }
+                                      elseif ($r.DisplayName)     { $r.DisplayName }
+                                      elseif ($r.Identifier)      { $r.Identifier }
+                                      else                        { $r.Id }
+        $record.resourceIdentifier = $r.Identifier
+        $resourceHash = [ordered]@{}
+        $r.PSObject.Properties | ForEach-Object { $resourceHash[$_.Name] = $_.Value }
+        $record.resource = $resourceHash
     }
+
+    if ($Order.Changes) {
+        $changesHash = [ordered]@{}
+        $rolesArr    = [System.Collections.ArrayList]::new()
+        $Order.Changes.PSObject.Properties | ForEach-Object {
+            $propName = $_.Name
+            $propVal  = $_.Value
+            $isArray  = $propVal -is [System.Collections.IEnumerable] -and -not ($propVal -is [string])
+            if ($isArray) {
+                $direction = 'unknown'
+                if ($propName -match '_add$')         { $direction = 'add'    }
+                elseif ($propName -match '_remove$')  { $direction = 'remove' }
+                foreach ($item in $propVal) {
+                    $roleName = if     ($item -is [string]) { $item }
+                                elseif ($item.DisplayName)  { $item.DisplayName }
+                                elseif ($item.Identifier)   { $item.Identifier }
+                                elseif ($item.Id)           { $item.Id }
+                                else                        { ($item | ConvertTo-Json -Compress) }
+                    [void]$rolesArr.Add([ordered]@{ name = $roleName; key = $propName; direction = $direction })
+                }
+            } else {
+                $changesHash[$propName] = $propVal
+            }
+        }
+        $record.changes = $changesHash
+        $record.roles   = @($rolesArr)
+    }
+
+    return $record
 }
 
 function Get-OrderStats {
@@ -105,8 +161,163 @@ function Get-OrderTimeline {
     })
 }
 
+# ═══════════════════════════════════════════════════════════════════════════════
+# SERVE MODE — functions (only used when -Serve is passed)
+# ═══════════════════════════════════════════════════════════════════════════════
+
+# One-pass index build: scans all files once to collect metadata and file paths.
+# Does NOT store full records — memory footprint stays tiny regardless of dataset size.
+# Returns a hashtable with:
+#   FileIndex      - ArrayList of {Path, FileName, IsoDate, ResourceTypeDir, TargetEntity, SourceEntity}
+#   Meta           - entity lists, attr lists, totalOrders (for /api/meta)
+#   OwnerFileIndex - hashtable: ownerKey -> ArrayList of file paths (for lifecycle)
+function Build-ServeIndex {
+    param([object[]]$JsonFiles)
+
+    $fileIndex         = [System.Collections.ArrayList]::new()
+    $ownerFileIndex    = @{}   # ownerKey (ident or display name) -> ArrayList of paths
+    $seSet             = @{}; $teSet = @{}
+    $tlMap             = @{}  # date -> {added,modified,deleted} for fullTimeline
+    $s2t               = @{}; $t2s   = @{}
+    $ownerAttrsSeen    = @{}
+    $resourceAttrsSeen = @{}
+    $totalOrders       = 0
+    $total             = $JsonFiles.Count
+    $done              = 0
+    $lastPct           = -1
+
+    foreach ($jsonFile in $JsonFiles) {
+        $done++
+        $pct = [math]::Floor(($done / $total) * 100)
+        if ($pct -ne $lastPct -and ($pct % 5 -eq 0 -or $done -eq $total)) {
+            Write-Host "  [$pct%] Indexed $done / $total files" -ForegroundColor Gray
+            $lastPct = $pct
+        }
+
+        $filePath = $jsonFile.FullName
+        $fileName = $jsonFile.Name
+        $rtDir    = $jsonFile.Directory.Name
+        $isoDate  = $null
+
+        if ($fileName -match '^(\d{14})') {
+            try { $isoDate = [datetime]::ParseExact($Matches[1], 'yyyyMMddHHmmss', $null).ToString('yyyy-MM-ddTHH:mm:ss') }
+            catch { continue }
+        } else { continue }
+
+        $fileInfo = [ordered]@{
+            Path            = $filePath
+            FileName        = $fileName
+            IsoDate         = $isoDate
+            ResourceTypeDir = $rtDir
+            TargetEntity    = $null
+            SourceEntity    = $null
+        }
+
+        try {
+            $content = Get-Content -Path $filePath -Raw -Encoding UTF8
+            $json    = $content | ConvertFrom-Json
+        } catch {
+            [void]$fileIndex.Add($fileInfo)
+            continue
+        }
+
+        $orders = if ($json.ProvisioningOrdersList) { @($json.ProvisioningOrdersList) } else { @($json) }
+
+        foreach ($order in $orders) {
+            $totalOrders++
+
+            # Timeline accumulation
+            $dk = $isoDate.Substring(0, 10)
+            if (-not $tlMap.ContainsKey($dk)) { $tlMap[$dk] = @{ added = 0; modified = 0; deleted = 0 } }
+            $ct = if ($order.ChangeType) { $order.ChangeType.ToLower() } else { '' }
+            if      ($ct -eq 'added')    { $tlMap[$dk].added++ }
+            elseif  ($ct -eq 'modified') { $tlMap[$dk].modified++ }
+            elseif  ($ct -eq 'deleted')  { $tlMap[$dk].deleted++ }
+
+            # Entity info
+            $se = 'Unknown'; $te = 'Unknown'
+            if ($order.ResourceType) {
+                if ($order.ResourceType.SourceEntityType -and $order.ResourceType.SourceEntityType.Identifier) {
+                    $se = $order.ResourceType.SourceEntityType.Identifier
+                }
+                if ($order.ResourceType.TargetEntityType -and $order.ResourceType.TargetEntityType.Identifier) {
+                    $te = $order.ResourceType.TargetEntityType.Identifier
+                }
+            }
+            # Use first order's entities to represent the file (all orders in a folder share the same RT)
+            if (-not $fileInfo.TargetEntity) { $fileInfo.TargetEntity = $te; $fileInfo.SourceEntity = $se }
+            $seSet[$se] = 1; $teSet[$te] = 1
+            if (-not $s2t.ContainsKey($se)) { $s2t[$se] = @{} }
+            if (-not $t2s.ContainsKey($te)) { $t2s[$te] = @{} }
+            $s2t[$se][$te] = $true; $t2s[$te][$se] = $true
+
+            # Attr keys for filter dropdowns
+            if ($order.Owner)    { $order.Owner.PSObject.Properties    | ForEach-Object { $ownerAttrsSeen[$_.Name]    = 1 } }
+            if ($order.Resource) { $order.Resource.PSObject.Properties | ForEach-Object { $resourceAttrsSeen[$_.Name] = 1 } }
+
+            # Owner file index: index by both identifier and display name so searches hit either
+            if ($order.Owner) {
+                $o         = $order.Owner
+                $ownerKeys = @()
+                if ($o.Identifier) { $ownerKeys += $o.Identifier }
+                $disp = if ($o.InternalDisplayName) { $o.InternalDisplayName }
+                        elseif ($o.DisplayName)     { $o.DisplayName }
+                        elseif ($o.LastFirstName)   { $o.LastFirstName }
+                        else                        { $null }
+                if ($disp -and $disp -ne $o.Identifier) { $ownerKeys += $disp }
+                foreach ($key in $ownerKeys) {
+                    if (-not $ownerFileIndex.ContainsKey($key)) {
+                        $ownerFileIndex[$key] = [System.Collections.ArrayList]::new()
+                    }
+                    if (-not $ownerFileIndex[$key].Contains($filePath)) {
+                        [void]$ownerFileIndex[$key].Add($filePath)
+                    }
+                }
+            }
+        }
+
+        [void]$fileIndex.Add($fileInfo)
+    }
+
+    # Build link maps
+    $s2tOut = [ordered]@{}
+    foreach ($sk in ($s2t.Keys | Sort-Object)) {
+        $s2tOut[$sk] = [ordered]@{}
+        foreach ($tk in $s2t[$sk].Keys) { $s2tOut[$sk][$tk] = $true }
+    }
+    $t2sOut = [ordered]@{}
+    foreach ($tk in ($t2s.Keys | Sort-Object)) {
+        $t2sOut[$tk] = [ordered]@{}
+        foreach ($sk in $t2s[$tk].Keys) { $t2sOut[$tk][$sk] = $true }
+    }
+
+    $fullTimeline = @($tlMap.Keys | Sort-Object | ForEach-Object {
+        $e = $tlMap[$_]
+        [ordered]@{ date = $_; added = $e.added; modified = $e.modified; deleted = $e.deleted; total = $e.added + $e.modified + $e.deleted }
+    })
+
+    $meta = [ordered]@{
+        sourceEntities = @($seSet.Keys | Sort-Object)
+        targetEntities = @($teSet.Keys | Sort-Object)
+        entityLinks    = [ordered]@{ s2t = $s2tOut; t2s = $t2sOut }
+        totalOrders    = $totalOrders
+        ownerAttrs     = @($ownerAttrsSeen.Keys | Sort-Object)
+        resourceAttrs  = @($resourceAttrsSeen.Keys | Sort-Object)
+        fullTimeline   = $fullTimeline
+    }
+
+    return @{
+        FileIndex      = $fileIndex
+        Meta           = $meta
+        OwnerFileIndex = $ownerFileIndex
+    }
+}
+
+# Per-query: pre-filters the file index by date/entity, then streams through
+# relevant files, parsing and filtering records on the fly.
+# Memory = O(matched records for this query), not O(all records).
 function Invoke-OrderQuery {
-    param([System.Collections.ArrayList]$Orders, $QueryString)
+    param([System.Collections.ArrayList]$FileIndex, $QueryString)
 
     # ── Parse query params ──────────────────────────────────────────────────
     $rawPage  = $QueryString['page'];     $pageNum  = if ($rawPage  -match '^\d+$') { [int]$rawPage  } else { 0 }
@@ -116,85 +327,173 @@ function Invoke-OrderQuery {
     $sortCol  = $QueryString['sortCol'];  if (-not $sortCol)  { $sortCol  = 'fileDate' }
     $sortDir  = $QueryString['sortDir'];  if ($sortDir -ne 'asc') { $sortDir = 'desc' }
 
-    $seFilter = $QueryString['sourceEntity']
-    $teFilter = $QueryString['targetEntity']
-    $search   = $QueryString['search']
-    $dateFrom = $QueryString['dateFrom']
-    $dateTo   = $QueryString['dateTo']
-    $chMin    = $QueryString['changesMin']
-    $chMax    = $QueryString['changesMax']
-    $chAttr   = $QueryString['changesAttr']
-    $chVal    = $QueryString['changesValue']
-    $rlMin    = $QueryString['rolesMin']
-    $rlMax    = $QueryString['rolesMax']
-    $rlDir    = $QueryString['rolesDir']
+    $seFilter        = $QueryString['sourceEntity']
+    $teFilter        = $QueryString['targetEntity']
+    $search          = $QueryString['search']
+    $ownerName       = $QueryString['ownerName']
+    $ownerIdent      = $QueryString['ownerIdentifier']
+    $ownerAttr       = $QueryString['ownerAttr']
+    $ownerAttrValue  = $QueryString['ownerAttrValue']
+    $resName         = $QueryString['resourceName']
+    $resIdent        = $QueryString['resourceIdentifier']
+    $resAttr         = $QueryString['resourceAttr']
+    $resAttrValue    = $QueryString['resourceAttrValue']
+    $dateFrom        = $QueryString['dateFrom']
+    $dateTo          = $QueryString['dateTo']
+    $chMin           = $QueryString['changesMin']
+    $chMax           = $QueryString['changesMax']
+    $chAttr          = $QueryString['changesAttr']
+    $chVal           = $QueryString['changesValue']
+    $rlMin           = $QueryString['rolesMin']
+    $rlMax           = $QueryString['rolesMax']
+    $rlDir           = $QueryString['rolesDir']
+    $rlVal           = $QueryString['rolesValue']
 
-    $ctRaw    = $QueryString['changeTypes']
-    $ctOn     = @{ Added = $true; Modified = $true; Deleted = $true }
+    $ctRaw = $QueryString['changeTypes']
+    $ctOn  = @{ Added = $true; Modified = $true; Deleted = $true }
     if ($ctRaw) {
         $ctOn = @{ Added = $false; Modified = $false; Deleted = $false }
         $ctRaw -split ',' | ForEach-Object { $ctOn[$_.Trim()] = $true }
     }
 
-    # ── Filter ──────────────────────────────────────────────────────────────
-    $filtered = @($Orders | Where-Object {
-        $d = $_
-
-        if ($seFilter -and $seFilter -ne '__all__') {
-            $se = if ($d.sourceEntity) { $d.sourceEntity } else { 'Unknown' }
-            if ($se -ne $seFilter) { return $false }
-        }
-        if ($teFilter -and $teFilter -ne '__all__') {
-            $te = if ($d.targetEntity) { $d.targetEntity } else { 'Unknown' }
-            if ($te -ne $teFilter) { return $false }
-        }
-
-        $ct   = if ($d.changeType) { $d.changeType } else { '' }
-        $norm = if ($ct.Length -gt 0) { $ct.Substring(0,1).ToUpper() + $ct.Substring(1).ToLower() } else { '' }
-        if (-not $ctOn[$norm]) { return $false }
-
-        if ($search) {
-            $q   = $search.ToLower()
-            $hay = @($d.ownerName, $d.ownerIdentifier, $d.fileName, $d.sourceEntity,
-                     $d.targetEntity, $d.resourceType, $d.resourceTypeDir) | Where-Object { $_ -ne $null }
-            if (($hay -join ' ').ToLower().IndexOf($q) -lt 0) { return $false }
-        }
-
-        $fd = if ($d.fileDate -is [datetime]) { $d.fileDate.ToString('yyyy-MM-ddTHH:mm:ss') } elseif ($d.fileDate) { "$($d.fileDate)" } else { '' }
-        if ($dateFrom -and $fd -and $fd -lt $dateFrom) { return $false }
-        if ($dateTo   -and $fd -and $fd -gt ($dateTo + 'T23:59:59')) { return $false }
-
-        $nch = if ($d.changes) { $d.changes.Count } else { 0 }
-        if ($chMin -and $chMin -ne '' -and $nch -lt [int]$chMin) { return $false }
-        if ($chMax -and $chMax -ne '' -and $nch -gt [int]$chMax) { return $false }
-        if ($chAttr -and $chAttr -ne '__all__') {
-            if (-not ($d.changes -and $d.changes.Contains($chAttr))) { return $false }
-        }
-        if ($chVal -and $chVal -ne '') {
-            $q = $chVal.ToLower(); $found = $false
-            if ($d.changes) {
-                foreach ($k in $d.changes.Keys) {
-                    $v = $d.changes[$k]
-                    if ($null -ne $v -and $v.ToString().ToLower().IndexOf($q) -ge 0) { $found = $true; break }
-                }
-            }
-            if (-not $found) { return $false }
-        }
-
-        $roles = if ($d.roles) { @($d.roles) } else { @() }
-        $nrl   = if ($rlDir -and $rlDir -ne '__all__') { ($roles | Where-Object { $_.direction -eq $rlDir }).Count } else { $roles.Count }
-        if ($rlDir -and $rlDir -ne '__all__' -and $nrl -eq 0) { return $false }
-        if ($rlMin -and $rlMin -ne '' -and $nrl -lt [int]$rlMin) { return $false }
-        if ($rlMax -and $rlMax -ne '' -and $nrl -gt [int]$rlMax) { return $false }
-
+    # ── Pre-filter files — skips entire files that can't possibly match ─────
+    $relevantFiles = @($FileIndex | Where-Object {
+        $f = $_
+        if ($dateFrom -and $f.IsoDate -lt $dateFrom) { return $false }
+        if ($dateTo   -and $f.IsoDate -gt ($dateTo + 'T23:59:59')) { return $false }
+        if ($teFilter -and $teFilter -ne '__all__' -and $f.TargetEntity -and $f.TargetEntity -ne $teFilter) { return $false }
+        if ($seFilter -and $seFilter -ne '__all__' -and $f.SourceEntity -and $f.SourceEntity -ne $seFilter) { return $false }
         return $true
     })
 
-    # ── Stats & timeline from full filtered set ─────────────────────────────
+    # ── Stream through files, parse and filter records on the fly ──────────
+    $filtered = [System.Collections.ArrayList]::new()
+
+    foreach ($fileInfo in $relevantFiles) {
+        try {
+            $content = Get-Content -Path $fileInfo.Path -Raw -Encoding UTF8
+            $json    = $content | ConvertFrom-Json
+        } catch { continue }
+
+        $orders = if ($json.ProvisioningOrdersList) { @($json.ProvisioningOrdersList) } else { @($json) }
+
+        foreach ($order in $orders) {
+            $d = New-OrderRecord -Order $order -FileName $fileInfo.FileName -IsoDate $fileInfo.IsoDate -ResourceTypeDir $fileInfo.ResourceTypeDir
+
+            # Entity
+            if ($seFilter -and $seFilter -ne '__all__') {
+                if ((if ($d.sourceEntity) { $d.sourceEntity } else { 'Unknown' }) -ne $seFilter) { continue }
+            }
+            if ($teFilter -and $teFilter -ne '__all__') {
+                if ((if ($d.targetEntity) { $d.targetEntity } else { 'Unknown' }) -ne $teFilter) { continue }
+            }
+
+            # Change type
+            $ct   = if ($d.changeType) { $d.changeType } else { '' }
+            $norm = if ($ct.Length -gt 0) { $ct.Substring(0,1).ToUpper() + $ct.Substring(1).ToLower() } else { '' }
+            if (-not $ctOn[$norm]) { continue }
+
+            # Search
+            if ($search) {
+                $q   = $search.ToLower()
+                $hay = @($d.ownerName, $d.ownerIdentifier, $d.fileName, $d.sourceEntity,
+                         $d.targetEntity, $d.resourceType, $d.resourceTypeDir) | Where-Object { $_ -ne $null }
+                if (($hay -join ' ').ToLower().IndexOf($q) -lt 0) { continue }
+            }
+
+            # Owner
+            if ($ownerName  -and ($null -eq $d.ownerName       -or $d.ownerName.ToLower().IndexOf($ownerName.ToLower())       -lt 0)) { continue }
+            if ($ownerIdent -and ($null -eq $d.ownerIdentifier  -or $d.ownerIdentifier.ToLower().IndexOf($ownerIdent.ToLower()) -lt 0)) { continue }
+            if ($ownerAttr -and $ownerAttr -ne '__all__') {
+                $oo = $d.owner
+                if ($null -eq $oo -or -not $oo.Contains($ownerAttr)) { continue }
+                if ($ownerAttrValue -and $ownerAttrValue -ne '') {
+                    $v = $oo[$ownerAttr]
+                    if ($null -eq $v -or $v.ToString().ToLower().IndexOf($ownerAttrValue.ToLower()) -lt 0) { continue }
+                }
+            } elseif ($ownerAttrValue -and $ownerAttrValue -ne '') {
+                $oo = $d.owner; $oFound = $false; $oq = $ownerAttrValue.ToLower()
+                if ($null -ne $oo) {
+                    foreach ($k in $oo.Keys) {
+                        $v = $oo[$k]
+                        if ($null -ne $v -and $v.ToString().ToLower().IndexOf($oq) -ge 0) { $oFound = $true; break }
+                    }
+                }
+                if (-not $oFound) { continue }
+            }
+
+            # Resource
+            if ($resName  -and ($null -eq $d.resourceDisplayName -or $d.resourceDisplayName.ToLower().IndexOf($resName.ToLower())   -lt 0)) { continue }
+            if ($resIdent -and ($null -eq $d.resourceIdentifier  -or $d.resourceIdentifier.ToLower().IndexOf($resIdent.ToLower())   -lt 0)) { continue }
+            if ($resAttr -and $resAttr -ne '__all__') {
+                $ro = $d.resource
+                if ($null -eq $ro -or -not $ro.Contains($resAttr)) { continue }
+                if ($resAttrValue -and $resAttrValue -ne '') {
+                    $v = $ro[$resAttr]
+                    if ($null -eq $v -or $v.ToString().ToLower().IndexOf($resAttrValue.ToLower()) -lt 0) { continue }
+                }
+            } elseif ($resAttrValue -and $resAttrValue -ne '') {
+                $ro = $d.resource; $rFound = $false; $rq = $resAttrValue.ToLower()
+                if ($null -ne $ro) {
+                    foreach ($k in $ro.Keys) {
+                        $v = $ro[$k]
+                        if ($null -ne $v -and $v.ToString().ToLower().IndexOf($rq) -ge 0) { $rFound = $true; break }
+                    }
+                }
+                if (-not $rFound) { continue }
+            }
+
+            # Changes
+            $nch = if ($d.changes) { $d.changes.Count } else { 0 }
+            if ($chMin -and $chMin -ne '' -and $nch -lt [int]$chMin) { continue }
+            if ($chMax -and $chMax -ne '' -and $nch -gt [int]$chMax) { continue }
+            if ($chAttr -and $chAttr -ne '__all__') {
+                if (-not ($d.changes -and $d.changes.Contains($chAttr))) { continue }
+            }
+            if ($chVal -and $chVal -ne '') {
+                $q = $chVal.ToLower(); $found = $false
+                if ($d.changes) {
+                    if ($chAttr -and $chAttr -ne '__all__') {
+                        if ($d.changes.Contains($chAttr)) {
+                            $v = $d.changes[$chAttr]
+                            $vStr = if ($null -eq $v) { 'null' } else { $v.ToString() }
+                            if ($vStr.ToLower().IndexOf($q) -ge 0) { $found = $true }
+                        }
+                    } else {
+                        foreach ($k in $d.changes.Keys) {
+                            $v = $d.changes[$k]
+                            $vStr = if ($null -eq $v) { 'null' } else { $v.ToString() }
+                            if ($vStr.ToLower().IndexOf($q) -ge 0) { $found = $true; break }
+                        }
+                    }
+                }
+                if (-not $found) { continue }
+            }
+
+            # Roles
+            $roles = if ($d.roles) { @($d.roles) } else { @() }
+            $nrl   = if ($rlDir -and $rlDir -ne '__all__') { ($roles | Where-Object { $_.direction -eq $rlDir }).Count } else { $roles.Count }
+            if ($rlDir -and $rlDir -ne '__all__' -and $nrl -eq 0) { continue }
+            if ($rlMin -and $rlMin -ne '' -and $nrl -lt [int]$rlMin) { continue }
+            if ($rlMax -and $rlMax -ne '' -and $nrl -gt [int]$rlMax) { continue }
+            if ($rlVal -and $rlVal -ne '') {
+                $rq = $rlVal.ToLower(); $rlFound = $false
+                foreach ($r in $roles) {
+                    if ($rlDir -and $rlDir -ne '__all__' -and $r.direction -ne $rlDir) { continue }
+                    if ($r.name -and $r.name.ToLower().IndexOf($rq) -ge 0) { $rlFound = $true; break }
+                }
+                if (-not $rlFound) { continue }
+            }
+
+            [void]$filtered.Add($d)
+        }
+    }
+
+    # ── Stats & timeline from the full matched set ──────────────────────────
     $stats    = Get-OrderStats    -Orders $filtered
     $timeline = Get-OrderTimeline -Orders $filtered
 
-    # ── Available attrs for the current target entity filter ────────────────
+    # ── Available attrs for current target entity filter ────────────────────
     $availableAttrs = @()
     if ($teFilter -and $teFilter -ne '__all__') {
         $attrSeen = @{}
@@ -215,7 +514,7 @@ function Invoke-OrderQuery {
                 else { $roles.Count }
             } -Descending:$desc
         }
-        default        {
+        default {
             $filtered | Sort-Object {
                 $v = $_.$sortCol
                 if ($v -is [datetime]) { $v.ToString('yyyy-MM-ddTHH:mm:ss') } elseif ($v) { "$v" } else { '' }
@@ -237,25 +536,64 @@ function Invoke-OrderQuery {
     }
 }
 
+# Lifecycle: uses the OwnerFileIndex to read only files containing matching owners.
+# No full dataset scan needed — just the files relevant to the search query.
 function Get-LifecycleData {
-    param([System.Collections.ArrayList]$Orders, [string]$Search)
+    param($OwnerFileIndex, [string]$Search)
+
     if (-not $Search -or $Search.Length -lt 2) {
         return [ordered]@{ owners = @(); total = 0; truncated = $false }
     }
-    $q      = $Search.ToLower()
-    $owners = [ordered]@{}
-    foreach ($d in $Orders) {
-        $name = if ($d.ownerName)       { $d.ownerName }       else { 'Unknown' }
-        $id   = if ($d.ownerIdentifier) { $d.ownerIdentifier } else { '' }
-        if ($name.ToLower().IndexOf($q) -lt 0 -and $id.ToLower().IndexOf($q) -lt 0) { continue }
-        $key  = if ($d.ownerIdentifier) { $d.ownerIdentifier } else { $name }
-        if (-not $owners.Contains($key)) {
-            $owners[$key] = [ordered]@{ name = $name; id = $id; orders = [System.Collections.ArrayList]::new() }
-        }
-        [void]$owners[$key].orders.Add($d)
+
+    $q = $Search.ToLower()
+
+    # Find all owner keys (identifiers + display names) that match the query
+    $matchingKeys = @($OwnerFileIndex.Keys | Where-Object { $_.ToLower().IndexOf($q) -ge 0 })
+
+    # Collect unique file paths for all matching owners
+    $filesToRead = [System.Collections.Generic.HashSet[string]]::new()
+    foreach ($key in $matchingKeys) {
+        foreach ($path in $OwnerFileIndex[$key]) { [void]$filesToRead.Add($path) }
     }
+
+    $owners = [ordered]@{}
+
+    foreach ($filePath in $filesToRead) {
+        $fileName = [System.IO.Path]::GetFileName($filePath)
+        $rtDir    = [System.IO.Path]::GetFileName([System.IO.Path]::GetDirectoryName($filePath))
+        $isoDate  = $null
+
+        if ($fileName -match '^(\d{14})') {
+            try { $isoDate = [datetime]::ParseExact($Matches[1], 'yyyyMMddHHmmss', $null).ToString('yyyy-MM-ddTHH:mm:ss') }
+            catch { continue }
+        } else { continue }
+
+        try {
+            $content = Get-Content -Path $filePath -Raw -Encoding UTF8
+            $json    = $content | ConvertFrom-Json
+        } catch { continue }
+
+        $orders = if ($json.ProvisioningOrdersList) { @($json.ProvisioningOrdersList) } else { @($json) }
+
+        foreach ($order in $orders) {
+            $d    = New-OrderRecord -Order $order -FileName $fileName -IsoDate $isoDate -ResourceTypeDir $rtDir
+            $name = if ($d.ownerName)       { $d.ownerName }       else { 'Unknown' }
+            $id   = if ($d.ownerIdentifier) { $d.ownerIdentifier } else { '' }
+
+            # Verify this record's owner actually matches the search (batch files can contain multiple owners)
+            if ($name.ToLower().IndexOf($q) -lt 0 -and $id.ToLower().IndexOf($q) -lt 0) { continue }
+
+            $key = if ($d.ownerIdentifier) { $d.ownerIdentifier } else { $name }
+            if (-not $owners.Contains($key)) {
+                $owners[$key] = [ordered]@{ name = $name; id = $id; orders = [System.Collections.ArrayList]::new() }
+            }
+            [void]$owners[$key].orders.Add($d)
+        }
+    }
+
     $list = @($owners.Values | Sort-Object { $_.name })
     foreach ($ow in $list) { $ow.orders = @($ow.orders | Sort-Object { $_.fileDate }) }
+
     return [ordered]@{
         owners    = @($list | Select-Object -First 50)
         total     = $list.Count
@@ -264,22 +602,17 @@ function Get-LifecycleData {
 }
 
 function Start-LogViewerServer {
-    param([System.Collections.ArrayList]$AllOrders, [string]$HtmlTemplate, [int]$Port)
+    param($ServeIndex, [string]$HtmlTemplate, [int]$Port)
 
-    # Prevent Stop-mode errors from crashing request handling
     $ErrorActionPreference = 'Continue'
 
-    # Prepare serve-mode HTML — replace data placeholder with null + API base
-    $serveHtml   = $HtmlTemplate.Replace(
+    $serveHtml = $HtmlTemplate.Replace(
         'window.__RAW_DATA__ = __DATA_PLACEHOLDER__;',
         "window.__RAW_DATA__ = null; window.__API_BASE__ = 'http://localhost:$Port';"
     )
     $serveHtmlBytes = [System.Text.Encoding]::UTF8.GetBytes($serveHtml)
 
-    # Pre-compute metadata (static — doesn't change between requests)
-    Write-Host "Pre-computing metadata..." -ForegroundColor Gray
-    $meta      = Get-OrderMeta -Orders $AllOrders
-    $metaJson  = $meta | ConvertTo-Json -Depth 10 -Compress
+    $metaJson  = $ServeIndex.Meta | ConvertTo-Json -Depth 10 -Compress
     $metaBytes = [System.Text.Encoding]::UTF8.GetBytes($metaJson)
 
     $listener = New-Object System.Net.HttpListener
@@ -295,7 +628,8 @@ function Start-LogViewerServer {
     $url = "http://localhost:$Port"
     Write-Host ""
     Write-Host "  LogViewer running at: $url" -ForegroundColor Green
-    Write-Host "  Orders loaded: $($AllOrders.Count)" -ForegroundColor Cyan
+    Write-Host "  Files indexed : $($ServeIndex.FileIndex.Count)" -ForegroundColor Cyan
+    Write-Host "  Total orders  : $($ServeIndex.Meta.totalOrders)" -ForegroundColor Cyan
     Write-Host "  Press Ctrl+C to stop." -ForegroundColor Gray
     Write-Host ""
 
@@ -303,7 +637,6 @@ function Start-LogViewerServer {
 
     try {
         while ($listener.IsListening) {
-            # Non-blocking wait: poll every 300ms so Ctrl+C is processed between checks
             $async = $listener.BeginGetContext($null, $null)
             while (-not $async.AsyncWaitHandle.WaitOne(300)) {
                 if (-not $listener.IsListening) { break }
@@ -336,17 +669,17 @@ function Start-LogViewerServer {
                     }
                     '^/api/query$' {
                         $qs     = ConvertFrom-QueryString $req.Url.Query
-                        $result = Invoke-OrderQuery -Orders $AllOrders -QueryString $qs
+                        $result = Invoke-OrderQuery -FileIndex $ServeIndex.FileIndex -QueryString $qs
                         $json   = $result | ConvertTo-Json -Depth 10 -Compress
                         Send-JsonResponse -Response $resp -Json $json
-                        Write-Verbose "  <-- 200 query ($($result.total) total, page $($result.page))"
+                        Write-Verbose "  <-- 200 query ($($result.total) matched, page $($result.page))"
                     }
                     '^/api/lifecycle$' {
                         $qs     = ConvertFrom-QueryString $req.Url.Query
-                        $result = Get-LifecycleData -Orders $AllOrders -Search $qs['search']
+                        $result = Get-LifecycleData -OwnerFileIndex $ServeIndex.OwnerFileIndex -Search $qs['search']
                         $json   = $result | ConvertTo-Json -Depth 10 -Compress
                         Send-JsonResponse -Response $resp -Json $json
-                        Write-Verbose "  <-- 200 lifecycle"
+                        Write-Verbose "  <-- 200 lifecycle ($($result.total) owners)"
                     }
                     default {
                         $resp.StatusCode = 404
@@ -391,23 +724,27 @@ if ($Help) {
     Write-Host "    .\LogViewer.ps1 [options]"
     Write-Host ""
     Write-Host "  OPTIONS:" -ForegroundColor Yellow
-    Write-Host "    -BasePath <path>      Root folder containing provisioning orders."
+    Write-Host "    -BasePath [path]      Root folder containing provisioning orders."
     Write-Host "                          Default: C:\Usercube\Work\ProvisioningOrders"
     Write-Host ""
-    Write-Host "    -StartDate <date>     Only include orders from this date onward."
+    Write-Host "    -StartDate [date]     Only include orders from this date onward."
     Write-Host "                          Format: yyyy-MM-dd (e.g. 2026-03-01)"
     Write-Host ""
-    Write-Host "    -EndDate <date>       Only include orders up to this date."
+    Write-Host "    -EndDate [date]       Only include orders up to this date."
     Write-Host "                          Format: yyyy-MM-dd (e.g. 2026-03-31)"
     Write-Host ""
     Write-Host "    -Serve                Start a local HTTP server instead of generating a file."
-    Write-Host "                          Best for large datasets. Opens browser automatically."
-    Write-Host "                          Press Ctrl+C to stop the server when done."
+    Write-Host "                          Records are never fully loaded into memory — files are"
+    Write-Host "                          streamed and filtered per query. Best for large datasets."
+    Write-Host "                          Opens browser automatically. Press Ctrl+C to stop."
     Write-Host ""
-    Write-Host "    -Port <number>        Port for the HTTP server (default: 5000)."
+    Write-Host "    -Port [number]        Port for the HTTP server (default: 5000)."
     Write-Host "                          Only used with -Serve."
     Write-Host ""
-    Write-Host "    -Help, -h             Show this help message."
+    Write-Host "    -Verbose              Print each HTTP request/response to the console."
+    Write-Host "                          Only used with -Serve."
+    Write-Host ""
+    Write-Host "    -Help (-h)            Show this help message."
     Write-Host ""
     Write-Host "  EXAMPLES:" -ForegroundColor Yellow
     Write-Host "    .\LogViewer.ps1                                              # All orders, generate HTML"
@@ -415,10 +752,12 @@ if ($Help) {
     Write-Host "    .\LogViewer.ps1 -Serve                                       # All orders, local server"
     Write-Host "    .\LogViewer.ps1 -Serve -StartDate 2026-01-01 -Port 8080      # Server on custom port"
     Write-Host ""
-    Write-Host "  WHEN TO USE -Serve:" -ForegroundColor Yellow
-    Write-Host "    Use -Serve when the dataset is too large for a self-contained HTML file"
-    Write-Host "    (rough limit: ~100k orders). The server holds data in memory and handles"
-    Write-Host "    all filtering server-side, so the browser only receives the current page."
+    Write-Host "  SERVE vs FILE mode:" -ForegroundColor Yellow
+    Write-Host "    File mode  — loads all records into memory and embeds them in a single HTML file."
+    Write-Host "                 Practical up to ~80k orders."
+    Write-Host "    Serve mode — builds a lightweight file index at startup (tiny memory footprint)."
+    Write-Host "                 Each query streams and filters only the relevant files on disk."
+    Write-Host "                 No upper limit on dataset size; add date/entity filters for speed."
     Write-Host ""
     Write-Host "  OUTPUT:" -ForegroundColor Yellow
     Write-Host "    Default: generates LogViewer.html next to this script."
@@ -428,7 +767,7 @@ if ($Help) {
 }
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# FILE SCANNING & PROCESSING
+# DISCOVERY — find JSON files (shared between file and serve modes)
 # ═══════════════════════════════════════════════════════════════════════════════
 
 $OutputPath = Join-Path $PSScriptRoot "LogViewer.html"
@@ -466,120 +805,7 @@ if ($allJsonFiles.Count -eq 0) {
     return
 }
 
-Write-Host "Found $($allJsonFiles.Count) JSON file(s) to process." -ForegroundColor Cyan
-
-$allOrders  = [System.Collections.ArrayList]::new()
-$totalFiles = $allJsonFiles.Count
-$processed  = 0
-$lastPct    = -1
-
-foreach ($jsonFile in $allJsonFiles) {
-    $processed++
-    $pct = [math]::Floor(($processed / $totalFiles) * 100)
-    if ($pct -ne $lastPct -and ($pct % 5 -eq 0 -or $processed -eq $totalFiles)) {
-        Write-Host "  [$pct%] $processed / $totalFiles files" -ForegroundColor Gray
-        $lastPct = $pct
-    }
-
-    $isoDate = $null
-    if ($jsonFile.BaseName -match '^(\d{14})') {
-        try {
-            $parsed  = [datetime]::ParseExact($Matches[1], 'yyyyMMddHHmmss', $null)
-            $isoDate = $parsed.ToString('yyyy-MM-ddTHH:mm:ss')
-        } catch { continue }
-    } else { continue }
-
-    $resourceTypeDir = $jsonFile.Directory.Name
-
-    try {
-        $content = Get-Content -Path $jsonFile.FullName -Raw -Encoding UTF8
-        $json    = $content | ConvertFrom-Json
-    } catch { continue }
-
-    $orders = @()
-    if ($json.ProvisioningOrdersList) { $orders = @($json.ProvisioningOrdersList) }
-    else                              { $orders = @($json) }
-
-    foreach ($order in $orders) {
-        $record = [ordered]@{
-            fileName        = $jsonFile.Name
-            fileDate        = $isoDate
-            resourceTypeDir = $resourceTypeDir
-            changeType      = $order.ChangeType
-            resourceType    = $null
-            sourceEntity    = $null
-            targetEntity    = $null
-            ownerName       = $null
-            ownerIdentifier = $null
-            changes         = @{}
-            roles           = @()
-            owner           = @{}
-        }
-
-        if ($order.ResourceType) {
-            $rt = $order.ResourceType
-            $record.resourceType = if ($rt.Identifier) { $rt.Identifier } else { $rt.Id }
-            if ($rt.SourceEntityType) {
-                $record.sourceEntity = if ($rt.SourceEntityType.Identifier) { $rt.SourceEntityType.Identifier } else { $rt.SourceEntityType.Id }
-            }
-            if ($rt.TargetEntityType) {
-                $record.targetEntity = if ($rt.TargetEntityType.Identifier) { $rt.TargetEntityType.Identifier } else { $rt.TargetEntityType.Id }
-            }
-        }
-
-        if ($order.Owner) {
-            $o = $order.Owner
-            $record.ownerName = if ($o.InternalDisplayName) { $o.InternalDisplayName }
-                                elseif ($o.DisplayName)     { $o.DisplayName }
-                                elseif ($o.LastFirstName)   { $o.LastFirstName }
-                                else                        { $o.Id }
-            $record.ownerIdentifier = $o.Identifier
-            $ownerHash = [ordered]@{}
-            $o.PSObject.Properties | ForEach-Object { $ownerHash[$_.Name] = $_.Value }
-            $record.owner = $ownerHash
-        }
-
-        if ($order.Changes) {
-            $changesHash = [ordered]@{}
-            $rolesArr    = [System.Collections.ArrayList]::new()
-            $order.Changes.PSObject.Properties | ForEach-Object {
-                $propName = $_.Name
-                $propVal  = $_.Value
-                $isArray  = $propVal -is [System.Collections.IEnumerable] -and -not ($propVal -is [string])
-                if ($isArray) {
-                    $direction = 'unknown'
-                    if ($propName -match '_add$')    { $direction = 'add'    }
-                    elseif ($propName -match '_remove$') { $direction = 'remove' }
-                    foreach ($item in $propVal) {
-                        $roleName = if     ($item -is [string]) { $item }
-                                    elseif ($item.DisplayName)  { $item.DisplayName }
-                                    elseif ($item.Identifier)   { $item.Identifier }
-                                    elseif ($item.Id)           { $item.Id }
-                                    else                        { ($item | ConvertTo-Json -Compress) }
-                        [void]$rolesArr.Add([ordered]@{ name = $roleName; key = $propName; direction = $direction })
-                    }
-                } else {
-                    $changesHash[$propName] = $propVal
-                }
-            }
-            $record.changes = $changesHash
-            $record.roles   = @($rolesArr)
-        }
-
-        [void]$allOrders.Add($record)
-    }
-}
-
-if ($allOrders.Count -eq 0) {
-    Write-Warning "No provisioning orders found. No output generated."
-    return
-}
-
-Write-Host "Loaded $($allOrders.Count) provisioning orders." -ForegroundColor Green
-
-# ═══════════════════════════════════════════════════════════════════════════════
-# OUTPUT — serve mode or file mode
-# ═══════════════════════════════════════════════════════════════════════════════
+Write-Host "Found $($allJsonFiles.Count) JSON file(s)." -ForegroundColor Cyan
 
 $templatePath = Join-Path $PSScriptRoot "LogViewer_base.html"
 if (-not (Test-Path $templatePath)) {
@@ -588,15 +814,63 @@ if (-not (Test-Path $templatePath)) {
 }
 $htmlTemplate = Get-Content -Path $templatePath -Raw -Encoding UTF8
 
+# ═══════════════════════════════════════════════════════════════════════════════
+# OUTPUT — serve mode (streaming) or file mode (full load)
+# ═══════════════════════════════════════════════════════════════════════════════
+
 if ($Serve) {
-    Start-LogViewerServer -AllOrders $allOrders -HtmlTemplate $htmlTemplate -Port $Port
+    # Serve mode: build a lightweight file index — no records held in memory.
+    # Queries stream and filter files on demand, so memory stays low even for GB datasets.
+    Write-Host "Building index (records will be streamed per query)..." -ForegroundColor Cyan
+    $serveIndex = Build-ServeIndex -JsonFiles $allJsonFiles
+    Write-Host "Index complete: $($serveIndex.FileIndex.Count) files, $($serveIndex.Meta.totalOrders) orders." -ForegroundColor Green
+    Start-LogViewerServer -ServeIndex $serveIndex -HtmlTemplate $htmlTemplate -Port $Port
 } else {
-    # Warn if dataset is large enough to stress the browser
-    if ($allOrders.Count -gt 80000) {
-        Write-Warning "$($allOrders.Count) orders exceeds the recommended limit (~80k) for self-contained HTML."
-        Write-Warning "The file may be slow or fail to open. Consider using -Serve for this dataset size."
+    # File mode: load all records into memory and embed them in a self-contained HTML file.
+    if ($allJsonFiles.Count -gt 80000) {
+        Write-Warning "$($allJsonFiles.Count) files exceeds the recommended limit (~80k) for file mode."
+        Write-Warning "The generated HTML may be slow or fail to open. Consider using -Serve instead."
     }
 
+    $allOrders  = [System.Collections.ArrayList]::new()
+    $totalFiles = $allJsonFiles.Count
+    $processed  = 0
+    $lastPct    = -1
+
+    foreach ($jsonFile in $allJsonFiles) {
+        $processed++
+        $pct = [math]::Floor(($processed / $totalFiles) * 100)
+        if ($pct -ne $lastPct -and ($pct % 5 -eq 0 -or $processed -eq $totalFiles)) {
+            Write-Host "  [$pct%] $processed / $totalFiles files" -ForegroundColor Gray
+            $lastPct = $pct
+        }
+
+        $isoDate = $null
+        if ($jsonFile.BaseName -match '^(\d{14})') {
+            try {
+                $isoDate = [datetime]::ParseExact($Matches[1], 'yyyyMMddHHmmss', $null).ToString('yyyy-MM-ddTHH:mm:ss')
+            } catch { continue }
+        } else { continue }
+
+        try {
+            $content = Get-Content -Path $jsonFile.FullName -Raw -Encoding UTF8
+            $json    = $content | ConvertFrom-Json
+        } catch { continue }
+
+        $orders = if ($json.ProvisioningOrdersList) { @($json.ProvisioningOrdersList) } else { @($json) }
+
+        foreach ($order in $orders) {
+            $record = New-OrderRecord -Order $order -FileName $jsonFile.Name -IsoDate $isoDate -ResourceTypeDir $jsonFile.Directory.Name
+            [void]$allOrders.Add($record)
+        }
+    }
+
+    if ($allOrders.Count -eq 0) {
+        Write-Warning "No provisioning orders found. No output generated."
+        return
+    }
+
+    Write-Host "Loaded $($allOrders.Count) provisioning orders." -ForegroundColor Green
     Write-Host "Serializing JSON..." -ForegroundColor Gray
     $jsonData = $allOrders | ConvertTo-Json -Depth 10 -Compress
 

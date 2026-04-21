@@ -109,7 +109,6 @@
       min-width: 32px; flex: 1; position: relative;
       cursor: pointer; height: 100%; justify-content: flex-end;
     }
-    .tl-bar-group:hover .tl-tooltip { display: block; }
     .tl-bars  { display: flex; flex-direction: column; width: 100%; gap: 1px; }
     .tl-bar   { width: 100%; border-radius: 2px 2px 0 0; min-height: 1px; }
     .tl-date-label {
@@ -117,17 +116,13 @@
       font-family: var(--mo); color: var(--tx2); white-space: nowrap; font-weight: 500;
     }
     .tl-tooltip {
-      display: none; position: absolute; top: -76px; left: 50%; transform: translateX(-50%);
-      background: var(--tx); color: var(--bg); border-radius: var(--r);
-      padding: 6px 10px; font-size: 10px; font-family: var(--mo);
+      display: none; position: absolute; top: 4px; left: 50%; transform: translateX(-50%);
+      background: var(--card2); border: 1px solid var(--brd); border-radius: 4px;
+      padding: 3px 8px; font-family: var(--mo);
       white-space: nowrap; z-index: 100; pointer-events: none;
-      box-shadow: 0 4px 12px rgba(0,0,0,.2);
+      box-shadow: 0 2px 8px rgba(0,0,0,.18);
     }
-    .tl-tooltip::after {
-      content: ''; position: absolute; bottom: -4px; left: 50%; transform: translateX(-50%);
-      border-left: 4px solid transparent; border-right: 4px solid transparent;
-      border-top: 4px solid var(--tx);
-    }
+    .tl-bar-group:hover .tl-tooltip { display: block; }
 
     /* ── Table ─────────────────────────────────────────────────────────────── */
     .table-wrap {
@@ -181,6 +176,21 @@
     .fp-minmax input[type='number']::-webkit-inner-spin-button,
     .fp-minmax input[type='number']::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
     .fp-vsep { width: 1px; background: var(--brd); align-self: stretch; margin: 0 2px; }
+    .fp-section { border-top: 1px solid var(--brd); margin-top: 10px; padding-top: 6px; }
+    .fp-section-hdr {
+      display: flex; align-items: center; gap: 5px; cursor: pointer; user-select: none;
+      font-size: 10px; font-weight: 700; color: var(--tx2); text-transform: uppercase;
+      letter-spacing: .05em; padding: 2px 0;
+    }
+    .fp-section-hdr:hover { color: var(--ac); }
+    .fp-section-hdr:hover .fp-arrow { color: var(--ac); }
+    .fp-arrow { font-size: 9px; color: var(--tx3); width: 10px; display: inline-block; }
+    .fp-section-dot {
+      width: 5px; height: 5px; border-radius: 50%; background: var(--ac);
+      margin-left: 4px; display: none; flex-shrink: 0;
+    }
+    .fp-section-dot.visible { display: inline-block; }
+    .fp-section-body { padding-top: 8px; }
     .ct-toggles { display: flex; gap: 4px; flex-wrap: wrap; }
     .ct-toggle {
       padding: 3px 10px; border: 1px solid var(--brd2); background: var(--bg);
@@ -225,7 +235,7 @@
     .change-key { color: var(--tx3); }
     .change-val {
       color: var(--tx); font-weight: 500; text-align: right;
-      max-width: 140px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+      word-break: break-all;
     }
     .change-val.null-val { color: var(--tx3); font-style: italic; }
     mark { background: var(--acd2); color: var(--ac); border-radius: 2px; padding: 0 2px; }
@@ -239,13 +249,14 @@
     .role-unk    { background: var(--acd);   color: var(--tx2); border-color: var(--brd); }
 
     /* ── Owner button & modal ──────────────────────────────────────────────── */
-    .btn-owner {
-      display: inline-flex; align-items: center; gap: 4px; margin-top: 8px;
+    .btn-owner, .btn-resource {
+      display: inline-flex; align-items: center; gap: 4px; margin-top: 8px; margin-right: 6px;
       padding: 4px 10px; background: var(--acd); color: var(--ac);
       border: 1px solid var(--ac); border-radius: var(--r);
       font-size: 10px; font-family: var(--mo); cursor: pointer; font-weight: 600;
     }
-    .btn-owner:hover { background: var(--acd2); }
+    .btn-owner:hover, .btn-resource:hover { background: var(--acd2); }
+    .btn-inline { margin-top: 0 !important; padding: 2px 7px; font-size: 9px; }
 
     .modal-bg {
       display: none; position: fixed; inset: 0;
@@ -268,6 +279,8 @@
     }
     .owner-key { font-size: 9px; color: var(--tx3); text-transform: uppercase; letter-spacing: .5px; }
     .owner-val { color: var(--tx); font-weight: 500; word-break: break-all; }
+    .owner-val.null-val { color: var(--tx3); font-style: italic; font-weight: 400; }
+    .obj-toggle { background: var(--card2); border: 1px solid var(--brd); border-radius: 3px; color: var(--tx2); }
 
     .btn-modal-close {
       display: block; margin-top: 12px; padding: 6px 16px;
@@ -294,29 +307,79 @@
     .empty { text-align: center; padding: 30px; color: var(--tx3); font-size: 13px; }
 
     /* ── Owner Lifecycle tab ───────────────────────────────────────────────── */
-    .lc-search { margin-bottom: 14px; }
-    .lc-search input {
+    .lc-search-box { position: relative; margin-bottom: 10px; }
+    .lc-search-box input {
       background: var(--card); border: 1px solid var(--brd); color: var(--tx);
       padding: 8px 12px; border-radius: var(--r);
       font-family: var(--mo); font-size: 13px; width: 300px; outline: none;
     }
-    .lc-search input:focus { border-color: var(--ac); }
-    .lc-card {
+    .lc-search-box input:focus { border-color: var(--ac); }
+    .lc-suggestions {
       background: var(--card); border: 1px solid var(--brd);
-      border-radius: var(--r); padding: 14px 16px; margin-bottom: 12px;
-      transition: border-color .12s;
+      border-radius: var(--r); width: 340px; max-height: 220px; overflow-y: auto;
+      box-shadow: 0 6px 20px rgba(0,0,0,.3); margin-top: 4px;
     }
-    .lc-card:hover { border-color: var(--ac); }
-    .lc-name     { font-size: 14px; font-weight: 700; color: var(--tx); margin-bottom: 2px; }
-    .lc-id       { font-size: 10px; color: var(--tx3); font-family: var(--mo); margin-bottom: 10px; }
-    .lc-row {
-      display: flex; align-items: center; gap: 10px;
-      padding: 6px 0; border-top: 1px solid var(--brd);
-      font-family: var(--mo); font-size: 11px;
+    .lc-sug-item {
+      padding: 7px 12px; cursor: pointer; font-size: 12px;
+      display: flex; align-items: center; justify-content: space-between; gap: 8px;
     }
-    .lc-date     { color: var(--tx2); min-width: 110px; }
-    .lc-entities { display: flex; gap: 4px; flex: 1; flex-wrap: wrap; }
-    .lc-roles    { color: var(--tx3); font-size: 10px; margin-left: auto; white-space: nowrap; }
+    .lc-sug-item:hover { background: var(--hover); }
+    .lc-sug-item.sug-sel { color: var(--ac); }
+    .lc-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 14px; }
+    .lc-chip {
+      display: inline-flex; align-items: center; gap: 5px;
+      padding: 4px 8px 4px 11px; border-radius: 14px;
+      font-size: 11px; font-weight: 600; border: 1.5px solid;
+    }
+    .lc-chip-rm {
+      background: none; border: none; cursor: pointer; padding: 0 0 0 2px;
+      color: inherit; opacity: .6; font-size: 16px; line-height: 1;
+    }
+    .lc-chip-rm:hover { opacity: 1; }
+    .lc-compare {
+      background: var(--card); border: 1px solid var(--brd);
+      border-radius: var(--r); padding: 16px 16px 10px;
+    }
+    .lc-tl-owner-row { margin-bottom: 2px; }
+    .lc-tl-row { display: flex; align-items: center; gap: 12px; padding: 5px 0; }
+    .lc-tl-label {
+      width: 150px; flex-shrink: 0; font-size: 11px; font-weight: 600;
+      overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    }
+    .lc-tl-track { flex: 1; position: relative; height: 36px; }
+    .lc-tl-line {
+      position: absolute; top: 50%; left: 0; right: 0;
+      height: 2px; transform: translateY(-50%); border-radius: 1px;
+    }
+    .lc-node {
+      position: absolute; top: 50%; transform: translate(-50%, -50%);
+      cursor: pointer; padding: 7px; z-index: 2;
+    }
+    .lc-node-dot {
+      width: 10px; height: 10px; border-radius: 50%;
+      border: 2px solid var(--bg);
+      transition: transform .12s, box-shadow .12s;
+    }
+    .lc-node.multi .lc-node-dot {
+      width: 18px; height: 18px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 9px; font-weight: 700; color: #fff;
+    }
+    .lc-node:hover .lc-node-dot { transform: scale(1.5); }
+    .lc-node.lc-node-active .lc-node-dot { transform: scale(1.35); }
+    .lc-node-panel {
+      display: flex; gap: 12px;
+      background: var(--card2); border: 1px solid var(--brd);
+      border-radius: 4px; margin: 0 0 8px 0; padding: 10px 14px 12px;
+    }
+    .lc-node-panel-spacer { width: 150px; flex-shrink: 0; }
+    .lc-node-panel-body { flex: 1; min-width: 0; }
+    .lc-prow {
+      display: flex; align-items: center; gap: 8px;
+      padding: 5px 4px; font-family: var(--mo); font-size: 11px;
+      cursor: pointer; user-select: none; border-radius: 3px;
+    }
+    .lc-prow:hover { background: var(--hover); }
 
     /* ── Responsive ────────────────────────────────────────────────────────── */
     @media (max-width: 768px) {
@@ -355,6 +418,18 @@
   var sortDir   = 'desc';
   var activeTab = 'orders';
   var expanded  = {};
+  var lcExpanded    = {};   // kept for legacy safety
+  var lcRecordCache = [];
+  var lcSelected    = [];   // ordered array of owner keys
+  var lcOwnerData   = {};   // key -> { name, id, orders, color }
+  var lcActiveOwner   = null; // null | ownerKey — which owner's orders are shown
+  var lcPanelExpanded = {};   // stable key -> bool, per-row expand in the panel
+  var LC_PALETTE    = ['#5b8af5','#f5855b','#5bc87a','#f5c95b','#c75bf5','#5be8f5','#f55b8a','#a8a8f8'];
+
+  function hexToRgba(hex, a) {
+    var r = parseInt(hex.slice(1,3),16), g = parseInt(hex.slice(3,5),16), b = parseInt(hex.slice(5,7),16);
+    return 'rgba('+r+','+g+','+b+','+a+')';
+  }
 
   var F = {
     sourceEntity:    '__all__',
@@ -363,6 +438,14 @@
     search:          '',
     dateFrom:        '',
     dateTo:          '',
+    ownerName:          '',
+    ownerIdentifier:    '',
+    ownerAttr:          '__all__',
+    ownerAttrValue:     '',
+    resourceName:       '',
+    resourceIdentifier: '',
+    resourceAttr:       '__all__',
+    resourceAttrValue:  '',
     changesMin:      '',
     changesMax:      '',
     changesAttr:     '__all__',
@@ -370,8 +453,25 @@
     rolesMin:        '',
     rolesMax:        '',
     rolesDir:        '__all__',
+    rolesValue:      '',
     lifecycleSearch: ''
   };
+
+  // Collapsible filter section state (persists across renders)
+  var sectionOpen = { entity: true, owner: false, target: false, changes: false };
+
+  function sectionHasActive(key) {
+    if (key === 'entity')  return F.sourceEntity !== '__all__' || F.targetEntity !== '__all__';
+    if (key === 'owner')   return !!F.ownerName || !!F.ownerIdentifier
+                               || (F.ownerAttr && F.ownerAttr !== '__all__') || !!F.ownerAttrValue;
+    if (key === 'target')  return !!F.resourceName || !!F.resourceIdentifier
+                               || (F.resourceAttr && F.resourceAttr !== '__all__') || !!F.resourceAttrValue;
+    if (key === 'changes') return !!F.changesMin || !!F.changesMax
+                               || (F.changesAttr && F.changesAttr !== '__all__')
+                               || !!F.changesValue || F.rolesDir !== '__all__'
+                               || !!F.rolesMin || !!F.rolesMax || !!F.rolesValue;
+    return false;
+  }
 
   // ═══════════════════════════════════════════════════════════════════════════
   // MODE — file (embedded data) vs. serve (fetch from PS1 HTTP server)
@@ -441,8 +541,16 @@
     var ctOn = [];
     ['Added', 'Modified', 'Deleted'].forEach(function (ct) { if (F.changeTypes[ct]) ctOn.push(ct); });
     p.push('changeTypes=' + ctOn.join(','));
-    if (F.search)       p.push('search='       + encodeURIComponent(F.search));
-    if (F.dateFrom)     p.push('dateFrom='     + F.dateFrom);
+    if (F.search)           p.push('search='          + encodeURIComponent(F.search));
+    if (F.ownerName)          p.push('ownerName='          + encodeURIComponent(F.ownerName));
+    if (F.ownerIdentifier)    p.push('ownerIdentifier='    + encodeURIComponent(F.ownerIdentifier));
+    if (F.ownerAttr && F.ownerAttr !== '__all__') p.push('ownerAttr=' + encodeURIComponent(F.ownerAttr));
+    if (F.ownerAttrValue)     p.push('ownerAttrValue='     + encodeURIComponent(F.ownerAttrValue));
+    if (F.resourceName)       p.push('resourceName='       + encodeURIComponent(F.resourceName));
+    if (F.resourceIdentifier) p.push('resourceIdentifier=' + encodeURIComponent(F.resourceIdentifier));
+    if (F.resourceAttr && F.resourceAttr !== '__all__') p.push('resourceAttr=' + encodeURIComponent(F.resourceAttr));
+    if (F.resourceAttrValue)  p.push('resourceAttrValue='  + encodeURIComponent(F.resourceAttrValue));
+    if (F.dateFrom)         p.push('dateFrom='        + F.dateFrom);
     if (F.dateTo)       p.push('dateTo='       + F.dateTo);
     if (F.changesMin)   p.push('changesMin='   + F.changesMin);
     if (F.changesMax)   p.push('changesMax='   + F.changesMax);
@@ -451,6 +559,7 @@
     if (F.rolesMin)     p.push('rolesMin='     + F.rolesMin);
     if (F.rolesMax)     p.push('rolesMax='     + F.rolesMax);
     if (F.rolesDir !== '__all__') p.push('rolesDir=' + F.rolesDir);
+    if (F.rolesValue) p.push('rolesValue=' + encodeURIComponent(F.rolesValue));
     return p.join('&');
   }
 
@@ -487,6 +596,18 @@
     return Object.keys(seen).sort();
   }
 
+  function getOwnerAttrs() {
+    var seen = {};
+    data.forEach(function (d) { var o = d.owner || {}; for (var k in o) seen[k] = 1; });
+    return Object.keys(seen).sort();
+  }
+
+  function getResourceAttrs() {
+    var seen = {};
+    data.forEach(function (d) { var r = d.resource || {}; for (var k in r) seen[k] = 1; });
+    return Object.keys(seen).sort();
+  }
+
   function countRoles(roles) {
     if (!roles || !roles.length) return 0;
     if (F.rolesDir === '__all__') return roles.length;
@@ -496,8 +617,13 @@
   function matchChangesValue(d) {
     if (!F.changesValue) return true;
     var ch = d.changes || {}, q = F.changesValue.toLowerCase();
+    function valStr(v) { return v == null ? 'null' : String(v); }
+    // When an attribute is selected, scope the value search to that attribute only
+    if (F.changesAttr && F.changesAttr !== '__all__') {
+      return ch.hasOwnProperty(F.changesAttr) && valStr(ch[F.changesAttr]).toLowerCase().indexOf(q) >= 0;
+    }
     for (var k in ch) {
-      if (ch[k] != null && String(ch[k]).toLowerCase().indexOf(q) >= 0) return true;
+      if (valStr(ch[k]).toLowerCase().indexOf(q) >= 0) return true;
     }
     return false;
   }
@@ -518,6 +644,34 @@
       }
       if (F.dateFrom && d.fileDate && d.fileDate < F.dateFrom) return false;
       if (F.dateTo   && d.fileDate && d.fileDate > F.dateTo + 'T23:59:59') return false;
+      if (F.ownerName          && (d.ownerName             || '').toLowerCase().indexOf(F.ownerName.toLowerCase())          < 0) return false;
+      if (F.ownerIdentifier    && (d.ownerIdentifier       || '').toLowerCase().indexOf(F.ownerIdentifier.toLowerCase())    < 0) return false;
+      if (F.ownerAttr && F.ownerAttr !== '__all__') {
+        var oo = d.owner || {};
+        if (!(F.ownerAttr in oo)) return false;
+        if (F.ownerAttrValue) {
+          var ov = oo[F.ownerAttr];
+          if (ov == null || String(ov).toLowerCase().indexOf(F.ownerAttrValue.toLowerCase()) < 0) return false;
+        }
+      } else if (F.ownerAttrValue) {
+        var oo = d.owner || {}, oFound = false, oq = F.ownerAttrValue.toLowerCase();
+        for (var ok in oo) { if (oo[ok] != null && String(oo[ok]).toLowerCase().indexOf(oq) >= 0) { oFound = true; break; } }
+        if (!oFound) return false;
+      }
+      if (F.resourceName       && (d.resourceDisplayName   || '').toLowerCase().indexOf(F.resourceName.toLowerCase())       < 0) return false;
+      if (F.resourceIdentifier && (d.resourceIdentifier    || '').toLowerCase().indexOf(F.resourceIdentifier.toLowerCase()) < 0) return false;
+      if (F.resourceAttr && F.resourceAttr !== '__all__') {
+        var ro = d.resource || {};
+        if (!(F.resourceAttr in ro)) return false;
+        if (F.resourceAttrValue) {
+          var rv = ro[F.resourceAttr];
+          if (rv == null || String(rv).toLowerCase().indexOf(F.resourceAttrValue.toLowerCase()) < 0) return false;
+        }
+      } else if (F.resourceAttrValue) {
+        var ro = d.resource || {}, rFound = false, rq = F.resourceAttrValue.toLowerCase();
+        for (var rk in ro) { if (ro[rk] != null && String(ro[rk]).toLowerCase().indexOf(rq) >= 0) { rFound = true; break; } }
+        if (!rFound) return false;
+      }
       var nch = Object.keys(d.changes || {}).length;
       if (F.changesMin !== '' && nch < parseInt(F.changesMin, 10)) return false;
       if (F.changesMax !== '' && nch > parseInt(F.changesMax, 10)) return false;
@@ -527,6 +681,15 @@
       if (F.rolesDir !== '__all__' && nrl === 0) return false;
       if (F.rolesMin !== '' && nrl < parseInt(F.rolesMin, 10)) return false;
       if (F.rolesMax !== '' && nrl > parseInt(F.rolesMax, 10)) return false;
+      if (F.rolesValue) {
+        var rq = F.rolesValue.toLowerCase();
+        var roles = d.roles || [];
+        var rMatch = roles.some(function (r) {
+          if (F.rolesDir !== '__all__' && r.direction !== F.rolesDir) return false;
+          return r.name && r.name.toLowerCase().indexOf(rq) >= 0;
+        });
+        if (!rMatch) return false;
+      }
       return true;
     }).sort(function (a, b) {
       var va, vb;
@@ -585,7 +748,7 @@
                  cs, ra, rr, d.fileName || '', d.resourceType || d.resourceTypeDir || '']);
     });
     var csv = rows.map(function (r) {
-      return r.map(function (c) { return '"' + String(c).replace(/"/g, '""') + '"'; }).join(',');
+      return r.map(function (c) { return '"' + String(c).replace(/"/g, '""') + '"'; }).join(';');
     }).join('\n');
     var now = new Date();
     var ts  = now.getFullYear() + '-' + ('0'+(now.getMonth()+1)).slice(-2) + '-' + ('0'+now.getDate()).slice(-2)
@@ -710,7 +873,7 @@
     }
     var h = "<div class='timeline'><h2 style='user-select:none'>Timeline" + label;
     if (F.dateFrom) h += " <span style='cursor:pointer;font-size:10px;color:var(--ac)' id='tlClear'>(clear)</span>";
-    h += "</h2><div class='timeline-chart'>";
+    h += "</h2><div class='timeline-chart' id='tlChart'>";
     timeline.forEach(function (t, i) {
       var hPct      = (t.total / tlMax) * 100;
       var showLabel = timeline.length <= 15 || i === 0 || i === timeline.length - 1
@@ -728,9 +891,13 @@
         else               rs += 'border-top:2px solid var(--ac);border-bottom:2px solid var(--ac);';
       }
       h += "<div class='tl-bar-group' data-date='" + t.date + "' style='" + rs + "'>"
-         + "<div class='tl-tooltip'><div style='font-weight:600;margin-bottom:2px'>" + t.date + "</div>"
-         + "<div style='color:var(--add)'>+" + t.added + "</div><div style='color:var(--mod)'>~" + t.modified + "</div>"
-         + "<div style='color:var(--del)'>-" + t.deleted + "</div></div>"
+         + "<div class='tl-tooltip'>"
+         + "<div style='font-size:13px;font-weight:700;color:var(--ac);letter-spacing:.3px'>" + t.date + "</div>"
+         + "<div style='font-size:10px;color:var(--tx3);margin-top:2px'>"
+         + "<span style='color:var(--add)'>+" + t.added + "</span>"
+         + " <span style='color:var(--mod)'>~" + t.modified + "</span>"
+         + " <span style='color:var(--del)'>-" + t.deleted + "</span>"
+         + "</div></div>"
          + "<div class='tl-bars' style='height:" + hPct + "%'>";
       if (t.deleted  > 0) h += "<div class='tl-bar' style='background:var(--del);height:" + ((t.deleted  / t.total) * 100) + "%'></div>";
       if (t.modified > 0) h += "<div class='tl-bar' style='background:var(--mod);height:" + ((t.modified / t.total) * 100) + "%'></div>";
@@ -750,6 +917,14 @@
     if (F.dateTo) n++;
     if (!F.changeTypes.Added || !F.changeTypes.Modified || !F.changeTypes.Deleted) n++;
     if (F.search) n++;
+    if (F.ownerName) n++;
+    if (F.ownerIdentifier) n++;
+    if (F.ownerAttr && F.ownerAttr !== '__all__') n++;
+    if (F.ownerAttrValue) n++;
+    if (F.resourceName) n++;
+    if (F.resourceIdentifier) n++;
+    if (F.resourceAttr && F.resourceAttr !== '__all__') n++;
+    if (F.resourceAttrValue) n++;
     if (F.changesMin) n++;
     if (F.changesMax) n++;
     if (F.changesAttr && F.changesAttr !== '__all__') n++;
@@ -757,35 +932,51 @@
     if (F.rolesDir !== '__all__') n++;
     if (F.rolesMin) n++;
     if (F.rolesMax) n++;
+    if (F.rolesValue) n++;
     return n;
   }
 
   function resetFilters() {
-    F.sourceEntity  = '__all__'; F.targetEntity  = '__all__';
-    F.dateFrom      = '';        F.dateTo        = '';
+    F.sourceEntity  = '__all__'; F.targetEntity   = '__all__';
+    F.dateFrom      = '';        F.dateTo         = '';
     F.changeTypes   = { Added: true, Modified: true, Deleted: true };
     F.search        = '';
-    F.changesMin    = '';        F.changesMax    = '';
-    F.changesAttr   = '__all__'; F.changesValue  = '';
-    F.rolesDir      = '__all__'; F.rolesMin      = ''; F.rolesMax = '';
+    F.ownerName     = '';        F.ownerIdentifier    = '';
+    F.ownerAttr     = '__all__'; F.ownerAttrValue     = '';
+    F.resourceName  = '';        F.resourceIdentifier = '';
+    F.resourceAttr  = '__all__'; F.resourceAttrValue  = '';
+    F.changesMin    = '';        F.changesMax      = '';
+    F.changesAttr   = '__all__'; F.changesValue    = '';
+    F.rolesDir      = '__all__'; F.rolesMin = ''; F.rolesMax = ''; F.rolesValue = '';
     page = 0;
     triggerRender();
   }
 
-  function buildFilterPanel(ses, tes, links, allAttrs) {
+  function buildFilterPanel(ses, tes, links, allAttrs, ownerAttrs, resourceAttrs) {
     var active = countActiveFilters();
     var lT = F.sourceEntity !== '__all__' && links.s2t[F.sourceEntity] ? links.s2t[F.sourceEntity] : null;
     var lS = F.targetEntity !== '__all__' && links.t2s[F.targetEntity] ? links.t2s[F.targetEntity] : null;
     var attrDisabled = F.targetEntity === '__all__';
+
+    function secHdr(key, label) {
+      var open = sectionOpen[key];
+      return "<div class='fp-section-hdr' data-section='" + key + "'>"
+           + "<span class='fp-arrow'>" + (open ? '\u25BE' : '\u25B8') + "</span>"
+           + "<span>" + label + "</span>"
+           + "<span class='fp-section-dot" + (sectionHasActive(key) ? " visible" : "") + "'></span>"
+           + "</div>";
+    }
 
     var h = "<div class='fp'>"
           + "<div class='fp-hdr'>"
           + "<span class='fp-title'>Filters</span>"
           + "<span class='fp-badge" + (active > 0 ? " visible" : "") + "'>" + active + " active</span>"
           + "<button class='btn-reset' id='btnReset'>\u2715 Reset</button>"
-          + "</div><div class='fp-rows'>";
+          + "</div>";
 
-    // Date range
+    // ── Basic row (always visible) ──────────────────────────────────────────
+    h += "<div class='fp-rows'>";
+
     h += "<div class='fp-group'><span class='fp-lbl'>Date range</span>"
        + "<div class='fp-range'>"
        + "<input type='date' id='fDateFrom' value='" + F.dateFrom + "'>"
@@ -793,12 +984,10 @@
        + "<input type='date' id='fDateTo' value='" + F.dateTo + "'>"
        + "</div></div>";
 
-    // Search (2nd — mirrors Owner being the 2nd column)
     h += "<div class='fp-group wide'><span class='fp-lbl'>Search</span>"
        + "<input type='text' id='fSearch' placeholder='Owner, entity, file\u2026' value='" + esc(F.search) + "'>"
        + "</div>";
 
-    // Change type
     var ctDefs = [['Added','Added','active-add'],['Modified','Modified','active-mod'],['Deleted','Deleted','active-del']];
     h += "<div class='fp-group'><span class='fp-lbl'>Change type</span><div class='ct-toggles'>";
     ctDefs.forEach(function (ct) {
@@ -806,11 +995,13 @@
     });
     h += "</div></div>";
 
-    // Separator
-    h += "<div class='fp-vsep'></div>";
+    h += "</div>"; // fp-rows
 
-    // Source entity
-    h += "<div class='fp-group'><span class='fp-lbl'>Source entity</span>"
+    // ── Entity section ──────────────────────────────────────────────────────
+    h += "<div class='fp-section'>" + secHdr('entity', 'Entity');
+    h += "<div class='fp-section-body fp-rows' id='fp-sec-entity' style='display:" + (sectionOpen.entity ? '' : 'none') + "'>";
+
+    h += "<div class='fp-group'><span class='fp-lbl'>Source</span>"
        + "<select id='fSourceEntity'><option value='__all__'>All sources</option>";
     ses.forEach(function (v) {
       var linked = lS ? !!lS[v] : false;
@@ -819,8 +1010,7 @@
     });
     h += "</select></div>";
 
-    // Target entity
-    h += "<div class='fp-group'><span class='fp-lbl'>Target entity</span>"
+    h += "<div class='fp-group'><span class='fp-lbl'>Target</span>"
        + "<select id='fTargetEntity'><option value='__all__'>All targets</option>";
     tes.forEach(function (v) {
       var linked = lT ? !!lT[v] : false;
@@ -829,10 +1019,70 @@
     });
     h += "</select></div>";
 
-    // Separator
-    h += "<div class='fp-vsep'></div>";
+    h += "</div></div>"; // fp-section-body + fp-section
 
-    // Changes — attr select first so min/max row lines up with Roles' min/max row
+    // ── Owner section ───────────────────────────────────────────────────────
+    h += "<div class='fp-section'>" + secHdr('owner', 'Owner');
+    h += "<div class='fp-section-body fp-rows' id='fp-sec-owner' style='display:" + (sectionOpen.owner ? '' : 'none') + "'>";
+
+    h += "<div class='fp-group wide'><span class='fp-lbl'>Name</span>"
+       + "<input type='text' id='fOwnerName' placeholder='Filter by name\u2026' value='" + esc(F.ownerName) + "'>"
+       + "</div>";
+
+    h += "<div class='fp-group wide'><span class='fp-lbl'>Identifier</span>"
+       + "<input type='text' id='fOwnerIdentifier' placeholder='Filter by identifier\u2026' value='" + esc(F.ownerIdentifier) + "'>"
+       + "</div>";
+
+    if (ownerAttrs && ownerAttrs.length > 0) {
+      var ownerValPlaceholder = (F.ownerAttr && F.ownerAttr !== '__all__')
+        ? 'Search in ' + esc(F.ownerAttr) + '\u2026'
+        : 'Search any attribute\u2026';
+      h += "<div class='fp-group'><span class='fp-lbl'>Attribute</span>"
+         + "<select id='fOwnerAttr'>"
+         + "<option value='__all__'>Any attribute</option>";
+      ownerAttrs.forEach(function (a) { h += "<option value='" + esc(a) + "'" + (F.ownerAttr === a ? ' selected' : '') + ">" + esc(a) + "</option>"; });
+      h += "</select>"
+         + "<input type='text' id='fOwnerAttrValue' placeholder='" + ownerValPlaceholder + "' value='" + esc(F.ownerAttrValue) + "'>"
+         + "</div>";
+    }
+
+    h += "</div></div>"; // fp-section-body + fp-section (owner)
+
+    // ── Target section ──────────────────────────────────────────────────────
+    h += "<div class='fp-section'>" + secHdr('target', 'Target');
+    h += "<div class='fp-section-body fp-rows' id='fp-sec-target' style='display:" + (sectionOpen.target ? '' : 'none') + "'>";
+
+    h += "<div class='fp-group wide'><span class='fp-lbl'>Display name</span>"
+       + "<input type='text' id='fResourceName' placeholder='Filter by name\u2026' value='" + esc(F.resourceName) + "'>"
+       + "</div>";
+
+    h += "<div class='fp-group wide'><span class='fp-lbl'>Identifier</span>"
+       + "<input type='text' id='fResourceIdentifier' placeholder='Filter by identifier\u2026' value='" + esc(F.resourceIdentifier) + "'>"
+       + "</div>";
+
+    if (resourceAttrs && resourceAttrs.length > 0) {
+      var resourceValPlaceholder = (F.resourceAttr && F.resourceAttr !== '__all__')
+        ? 'Search in ' + esc(F.resourceAttr) + '\u2026'
+        : 'Search any attribute\u2026';
+      h += "<div class='fp-group'><span class='fp-lbl'>Attribute</span>"
+         + "<select id='fResourceAttr'>"
+         + "<option value='__all__'>Any attribute</option>";
+      resourceAttrs.forEach(function (a) { h += "<option value='" + esc(a) + "'" + (F.resourceAttr === a ? ' selected' : '') + ">" + esc(a) + "</option>"; });
+      h += "</select>"
+         + "<input type='text' id='fResourceAttrValue' placeholder='" + resourceValPlaceholder + "' value='" + esc(F.resourceAttrValue) + "'>"
+         + "</div>";
+    }
+
+    h += "</div></div>"; // fp-section-body + fp-section (target)
+
+    // ── Changes & Roles section ─────────────────────────────────────────────
+    h += "<div class='fp-section'>" + secHdr('changes', 'Changes & Roles');
+    h += "<div class='fp-section-body fp-rows' id='fp-sec-changes' style='display:" + (sectionOpen.changes ? '' : 'none') + "'>";
+
+    var valPlaceholder = (F.changesAttr && F.changesAttr !== '__all__')
+      ? 'Search in ' + esc(F.changesAttr) + '\u2026'
+      : 'Search any value\u2026';
+
     h += "<div class='fp-group'><span class='fp-lbl'>Changes</span>"
        + "<select id='fChangesAttr'" + (attrDisabled ? " disabled style='opacity:.5'" : '') + ">";
     if (attrDisabled) {
@@ -846,10 +1096,12 @@
        + "<input type='number' id='fChangesMin' placeholder='min' value='" + esc(F.changesMin) + "' min='0'>"
        + "<input type='number' id='fChangesMax' placeholder='max' value='" + esc(F.changesMax) + "' min='0'>"
        + "</div>"
-       + "<input type='text' id='fChangesValue' placeholder='Search value\u2026' value='" + esc(F.changesValue) + "'>"
+       + "<input type='text' id='fChangesValue' placeholder='" + valPlaceholder + "' value='" + esc(F.changesValue) + "'>"
        + "</div>";
 
-    // Roles — dir select first so min/max row lines up with Changes' min/max row
+    var rolesValPlaceholder = (F.rolesDir && F.rolesDir !== '__all__')
+      ? 'Search in ' + (F.rolesDir === 'add' ? 'added' : 'removed') + ' roles\u2026'
+      : 'Search role name\u2026';
     h += "<div class='fp-group'><span class='fp-lbl'>Roles</span>"
        + "<select id='fRolesDir'>"
        + "<option value='__all__'" + (F.rolesDir === '__all__' ? ' selected' : '') + ">All directions</option>"
@@ -859,9 +1111,13 @@
        + "<div class='fp-minmax'>"
        + "<input type='number' id='fRolesMin' placeholder='min' value='" + esc(F.rolesMin) + "' min='0'>"
        + "<input type='number' id='fRolesMax' placeholder='max' value='" + esc(F.rolesMax) + "' min='0'>"
-       + "</div></div>";
+       + "</div>"
+       + "<input type='text' id='fRolesValue' placeholder='" + rolesValPlaceholder + "' value='" + esc(F.rolesValue) + "'>"
+       + "</div>";
 
-    h += "</div></div>"; // fp-rows + fp
+    h += "</div></div>"; // fp-section-body + fp-section
+
+    h += "</div>"; // fp
     return h;
   }
 
@@ -899,30 +1155,36 @@
       h += "<div style='color:var(--tx3);font-size:11px'>No changes.</div>";
     }
     h += buildRolesSection(roles);
-    if (d.owner && typeof d.owner === 'object' && Object.keys(d.owner).length > 0) {
-      h += "<button class='btn-owner' data-owner-idx='" + gi + "'>\uD83D\uDC64 Owner details</button>";
-    }
     return h + "</div></td></tr>";
+  }
+
+  function rowExpKey(d) {
+    return (d.fileName || '') + '||' + (d.ownerIdentifier || '') + '||' + (d.fileDate || '') + '||' + (d.changeType || '');
   }
 
   function buildTableRows(pageData, pageOffset) {
     var h = '';
     pageData.forEach(function (d, i) {
       var gi    = pageOffset + i;
+      var expKey = rowExpKey(d);
       var bc    = badgeClass(d.changeType);
       var ch    = d.changes || {}, roles = d.roles || [];
       var ra    = roles.filter(function (r) { return r.direction === 'add';     });
       var rr    = roles.filter(function (r) { return r.direction === 'remove';  });
       var ru    = roles.filter(function (r) { return r.direction === 'unknown'; });
-      var isExp = !!expanded[gi];
-      h += "<tr data-idx='" + gi + "'>"
+      var isExp = !!expanded[expKey];
+      h += "<tr data-idx='" + gi + "' data-expkey='" + esc(expKey) + "'>"
          + "<td>" + fmtDate(d.fileDate) + "</td>"
          + "<td><div style='font-weight:500'>" + esc(d.ownerName || '\u2014') + "</div>"
          + (d.ownerIdentifier ? "<div style='font-size:9px;color:var(--tx3)'>" + esc(d.ownerIdentifier) + "</div>" : '')
          + "</td>"
          + "<td><span class='badge " + bc + "'>" + esc(d.changeType || '?') + "</span></td>"
-         + "<td><span class='et-tag' title='" + esc(d.sourceEntity) + "'>" + esc(d.sourceEntity || '\u2014') + "</span></td>"
-         + "<td><span class='et-tag' title='" + esc(d.targetEntity) + "'>" + esc(d.targetEntity || '\u2014') + "</span></td>"
+         + "<td><span class='et-tag' title='" + esc(d.sourceEntity) + "'>" + esc(d.sourceEntity || '\u2014') + "</span>"
+         + (d.owner && typeof d.owner === 'object' && Object.keys(d.owner).length > 0 ? " <button class='btn-owner btn-inline' data-owner-idx='" + gi + "'>\uD83D\uDC64 Source</button>" : "")
+         + "</td>"
+         + "<td><span class='et-tag' title='" + esc(d.targetEntity) + "'>" + esc(d.targetEntity || '\u2014') + "</span>"
+         + (d.resource && typeof d.resource === 'object' && Object.keys(d.resource).length > 0 ? " <button class='btn-resource btn-inline' data-resource-idx='" + gi + "'>\uD83C\uDFAF Target</button>" : "")
+         + "</td>"
          + "<td style='color:var(--tx3)'>" + Object.keys(ch).length + " <span style='font-size:9px'>" + (isExp ? '\u25B2' : '\u25BC') + "</span></td>"
          + "<td style='color:var(--tx3)'>";
       if (roles.length > 0) {
@@ -950,10 +1212,10 @@
          + "</div></div>";
   }
 
-  function buildOrders(pageData, stats, timeline, total, ses, tes, links, allAttrs) {
+  function buildOrders(pageData, stats, timeline, total, ses, tes, links, allAttrs, ownerAttrs, resourceAttrs) {
     var h = buildStats(stats)
           + buildTimeline(timeline)
-          + buildFilterPanel(ses, tes, links, allAttrs)
+          + buildFilterPanel(ses, tes, links, allAttrs, ownerAttrs, resourceAttrs)
           + "<div class='table-wrap' style='max-height:70vh;overflow-y:auto'><table><thead>"
           + "<tr>"
           + "<th data-sort='fileDate'>Date"         + sortArrow('fileDate')      + "</th>"
@@ -974,67 +1236,242 @@
     return h;
   }
 
-  function buildLifecycle() {
-    var h = "<div class='lc-search'>"
-          + "<input type='text' id='lcSearch' placeholder='Search owner by name or identifier...' value='"
-          + esc(F.lifecycleSearch) + "'></div>";
+  // ── Lifecycle helpers ──────────────────────────────────────────────────────
 
-    if (!F.lifecycleSearch || F.lifecycleSearch.length < 2) {
-      return h + "<div class='empty'>Type at least 2 characters to search for an owner.</div>";
-    }
-
-    var list, total, truncated;
-
+  function lcGetSuggestions() {
+    // Returns { list, truncated } from current search term
+    if (!F.lifecycleSearch || F.lifecycleSearch.length < 2) return { list: [], truncated: false };
     if (serverMode) {
-      if (!serverLifecycle) return h + "<div class='empty'>Loading\u2026</div>";
-      list      = serverLifecycle.owners;
-      total     = serverLifecycle.total;
-      truncated = serverLifecycle.truncated;
-    } else {
-      var q = F.lifecycleSearch.toLowerCase();
-      var owners = {};
-      data.forEach(function (d) {
-        var key  = d.ownerIdentifier || d.ownerName || 'Unknown';
-        var name = (d.ownerName || 'Unknown').toLowerCase();
-        var id   = (d.ownerIdentifier || '').toLowerCase();
-        if (name.indexOf(q) < 0 && id.indexOf(q) < 0) return;
-        if (!owners[key]) owners[key] = { name: d.ownerName || 'Unknown', id: d.ownerIdentifier || '', orders: [] };
-        owners[key].orders.push(d);
-      });
-      list = Object.keys(owners).map(function (k) { return owners[k]; })
-        .sort(function (a, b) { return a.name.toLowerCase() < b.name.toLowerCase() ? -1 : 1; });
-      list.forEach(function (ow) { ow.orders.sort(function (a, b) { return (a.fileDate || '').localeCompare(b.fileDate || ''); }); });
-      total     = list.length;
-      truncated = list.length > 50;
-      list      = list.slice(0, 50);
+      if (!serverLifecycle) return null; // loading
+      return { list: serverLifecycle.owners || [], truncated: serverLifecycle.truncated || false };
+    }
+    var q = F.lifecycleSearch.toLowerCase(), ownerMap = {};
+    data.forEach(function (d) {
+      var key = d.ownerIdentifier || d.ownerName || 'Unknown';
+      if ((d.ownerName||'').toLowerCase().indexOf(q) < 0 && (d.ownerIdentifier||'').toLowerCase().indexOf(q) < 0) return;
+      if (!ownerMap[key]) ownerMap[key] = { name: d.ownerName||'Unknown', id: d.ownerIdentifier||'', orders: [] };
+      ownerMap[key].orders.push(d);
+    });
+    var arr = Object.keys(ownerMap).map(function(k){ return ownerMap[k]; })
+      .sort(function(a,b){ return a.name.toLowerCase() < b.name.toLowerCase() ? -1 : 1; });
+    arr.forEach(function(ow){ ow.orders.sort(function(a,b){ return (a.fileDate||'').localeCompare(b.fileDate||''); }); });
+    return { list: arr.slice(0, 20), truncated: arr.length > 20 };
+  }
+
+  function lcBuildTimeline() {
+    // Gather all dates across selected owners
+    var allDates = {};
+    lcSelected.forEach(function(key) {
+      var od = lcOwnerData[key]; if (!od) return;
+      od.orders.forEach(function(d) { var dk = (d.fileDate||'').substring(0,10); if (dk) allDates[dk] = 1; });
+    });
+    var sortedDates = Object.keys(allDates).sort();
+    if (!sortedDates.length) return "<div class='empty'>No orders found.</div>";
+
+    var minDate = sortedDates[0], maxDate = sortedDates[sortedDates.length-1];
+    var spanMs  = new Date(maxDate) - new Date(minDate);
+    function pct(dk) {
+      if (spanMs <= 0) return 50;
+      return Math.min(98, Math.max(2, ((new Date(dk) - new Date(minDate)) / spanMs) * 100));
     }
 
-    if (!list || !list.length) return h + "<div class='empty'>No owners match '" + esc(F.lifecycleSearch) + "'.</div>";
+    var h = "<div class='lc-compare'>";
 
-    h += "<div style='font-size:11px;color:var(--tx3);margin-bottom:10px'>" + total + " owner(s) found</div>";
-    list.forEach(function (ow) {
-      h += "<div class='lc-card'><div class='lc-name'>" + esc(ow.name) + "</div><div class='lc-id'>" + esc(ow.id) + "</div>";
-      (ow.orders || []).forEach(function (d) {
-        var bc = badgeClass(d.changeType), roles = d.roles || [];
-        var ra = roles.filter(function (r) { return r.direction === 'add';    }).length;
-        var rr = roles.filter(function (r) { return r.direction === 'remove'; }).length;
-        var nch = Object.keys(d.changes || {}).length;
-        h += "<div class='lc-row'><span class='lc-date'>" + fmtDateShort(d.fileDate) + "</span>"
-           + "<span class='badge " + bc + "' style='font-size:9px'>" + esc(d.changeType || '?') + "</span>"
-           + "<div class='lc-entities'><span class='et-tag'>" + esc(d.sourceEntity || '?') + "</span>"
-           + "<span style='color:var(--tx3)'>\u2192</span><span class='et-tag'>" + esc(d.targetEntity || '?') + "</span></div>"
-           + "<span style='color:var(--tx3);font-size:10px;font-family:var(--mo)'>" + nch + " attr</span>";
-        if (ra > 0 || rr > 0) {
-          h += "<span class='lc-roles'>";
-          if (ra > 0) h += "<span style='color:var(--add)'>+" + ra + "</span> ";
-          if (rr > 0) h += "<span style='color:var(--del)'>-" + rr + "</span>";
-          h += "</span>";
+    lcSelected.forEach(function(key) {
+      var od = lcOwnerData[key]; if (!od) return;
+      var color   = od.color;
+      var isOpen  = lcActiveOwner === key;
+      var rowRing = isOpen ? 'background:' + hexToRgba(color, 0.06) + ';border-radius:4px;' : '';
+
+      // Group orders by date (for dot display)
+      var byDate = {};
+      od.orders.forEach(function(d) {
+        var dk = (d.fileDate||'').substring(0,10); if (!dk) return;
+        if (!byDate[dk]) byDate[dk] = [];
+        byDate[dk].push(d);
+      });
+
+      h += "<div class='lc-tl-owner-row'>";
+
+      // Clickable track row — entire row toggles all orders
+      h += "<div class='lc-tl-row' data-lc-owner='" + esc(key) + "' style='cursor:pointer;" + rowRing + "'>";
+      h += "<div class='lc-tl-label' style='color:" + color + "' title='" + esc(od.name) + "'>"
+         + "<span style='font-size:9px;margin-right:4px'>" + (isOpen ? '\u25BE' : '\u25B8') + "</span>"
+         + esc(od.name) + "</div>";
+      h += "<div class='lc-tl-track'>";
+      h += "<div class='lc-tl-line' style='background:" + hexToRgba(color, isOpen ? 0.5 : 0.25) + "'></div>";
+
+      Object.keys(byDate).sort().forEach(function(dk) {
+        var evts    = byDate[dk];
+        var p       = pct(dk);
+        var isMulti = evts.length > 1;
+        var dotBg   = color;
+        if (!isMulti) {
+          var ct = (evts[0].changeType||'').toLowerCase();
+          if      (ct==='added')    dotBg = 'var(--add)';
+          else if (ct==='modified') dotBg = 'var(--mod)';
+          else if (ct==='deleted')  dotBg = 'var(--del)';
         }
+        h += "<div class='lc-node" + (isMulti ? ' multi' : '') + (isOpen ? ' lc-node-active' : '')
+           + "' style='left:" + p.toFixed(2) + "%'>"
+           + "<div class='lc-node-dot' style='background:" + dotBg + (isOpen ? ';box-shadow:0 0 0 3px '+hexToRgba(color,0.25) : '') + "'>"
+           + (isMulti ? String(evts.length) : '')
+           + "</div></div>";
+      });
+
+      h += "</div></div>"; // track + row
+
+      // Full order list panel — all orders, grouped by date
+      if (isOpen) {
+        var allOrders = od.orders.slice().sort(function(a,b){ return (a.fileDate||'').localeCompare(b.fileDate||''); });
+        h += "<div class='lc-node-panel'><div class='lc-node-panel-spacer'></div><div class='lc-node-panel-body'>";
+        h += "<div style='font-size:10px;color:var(--tx3);margin-bottom:6px'>" + allOrders.length + " order" + (allOrders.length>1?'s':'') + "</div>";
+
+        var currentDate = null;
+        allOrders.forEach(function(d) {
+          var cacheIdx = lcRecordCache.length;
+          lcRecordCache.push(d);
+          var ch   = d.changes||{}, ck = Object.keys(ch), roles = d.roles||[];
+          var bc   = badgeClass(d.changeType);
+          var nch  = ck.length;
+          var ra   = roles.filter(function(r){ return r.direction==='add'; }).length;
+          var rr   = roles.filter(function(r){ return r.direction==='remove'; }).length;
+          var ru   = roles.filter(function(r){ return r.direction==='unknown'; }).length;
+          var date = d.fileDate ? d.fileDate.substring(0, 10) : '';
+          var time = d.fileDate && d.fileDate.length > 10 ? d.fileDate.substring(11) : '';
+          var pKey = key + '||' + (d.fileName||'') + '||' + (d.fileDate||'');
+          var isExp = !!lcPanelExpanded[pKey];
+
+          // Date group separator
+          if (date !== currentDate) {
+            currentDate = date;
+            h += "<div style='display:flex;align-items:center;gap:8px;margin:8px 0 4px'>"
+               + "<span style='font-size:10px;font-weight:600;color:var(--tx2);font-family:var(--mo);white-space:nowrap'>" + esc(date) + "</span>"
+               + "<div style='flex:1;height:1px;background:var(--brd)'></div>"
+               + "</div>";
+          }
+
+          // Collapsed row (time only, date is shown in separator)
+          h += "<div class='lc-row-wrap'>"
+             + "<div class='lc-prow' data-lc-prow='" + esc(pKey) + "'>"
+             + "<span class='lc-arrow'>" + (isExp ? '\u25BE' : '\u25B8') + "</span>"
+             + (time ? "<span style='color:var(--tx3);font-size:10px;font-family:var(--mo);min-width:60px;flex-shrink:0'>" + esc(time) + "</span>" : "")
+             + "<span class='badge " + bc + "' style='font-size:9px'>" + esc(d.changeType||'?') + "</span>"
+             + "<span style='flex:1;font-size:10px;font-family:var(--mo)'>"
+             + "<span class='et-tag'>" + esc(d.sourceEntity||'?') + "</span>"
+             + "<span style='color:var(--tx3);margin:0 4px;font-size:15px;line-height:1;vertical-align:middle;position:relative;top:-2px'>\u279C</span>"
+             + "<span class='et-tag'>" + esc(d.targetEntity||'?') + "</span>"
+             + "</span>"
+             + "<span style='color:var(--tx3);font-size:10px;font-family:var(--mo)'>" + nch + " attr</span>";
+          if (ra||rr||ru) {
+            h += "<span style='font-size:10px;font-family:var(--mo);margin-left:6px'>";
+            if (ra) h += "<span style='color:var(--add)'>+" + ra + "</span> ";
+            if (rr) h += "<span style='color:var(--del)'>-" + rr + "</span> ";
+            if (ru) h += "<span style='color:var(--tx3)'>" + ru + "</span>";
+            h += "</span>";
+          }
+          if (d.owner    && Object.keys(d.owner).length    > 0) h += "<button class='btn-owner btn-lc-owner btn-inline' data-lc-idx='" + cacheIdx + "'>\uD83D\uDC64 Source</button>";
+          if (d.resource && Object.keys(d.resource).length > 0) h += "<button class='btn-resource btn-lc-resource btn-inline' data-lc-idx='" + cacheIdx + "'>\uD83C\uDFAF Target</button>";
+          h += "</div>"; // lc-prow
+
+          if (isExp) {
+            h += "<div class='lc-detail'>";
+            h += "<div style='font-size:10px;color:var(--tx3);margin-bottom:8px'>File: " + esc(d.fileName||'\u2014')
+               + " \u00B7 RT: " + esc(d.resourceType||d.resourceTypeDir||'\u2014') + "</div>";
+            if (nch > 0) {
+              h += "<div class='changes-grid'>";
+              ck.forEach(function(k) {
+                var v = ch[k], vStr = v==null?'null':String(v);
+                h += "<div class='change-item'><span class='change-key'>" + esc(k) + "</span>"
+                   + "<span class='change-val" + (v==null?' null-val':'') + "'>" + esc(vStr) + "</span></div>";
+              });
+              h += "</div>";
+            } else {
+              h += "<div style='color:var(--tx3);font-size:11px'>No changes.</div>";
+            }
+            h += buildRolesSection(roles);
+            h += "</div>"; // lc-detail
+          }
+
+          h += "</div>"; // lc-row-wrap
+        });
+
+        h += "</div></div>"; // panel-body + panel
+      }
+
+      h += "</div>"; // lc-tl-owner-row
+    });
+
+    // Shared date axis
+    h += "<div style='display:flex;gap:12px;margin-top:4px'>";
+    h += "<div style='width:150px;flex-shrink:0'></div><div style='flex:1;position:relative;height:16px'>";
+    var axDates = sortedDates.length === 1 ? [sortedDates[0]] : (function() {
+      var out = [], max = Math.min(8, sortedDates.length);
+      var step = Math.max(1, Math.floor((sortedDates.length-1) / (max-1)));
+      for (var i = 0; i < sortedDates.length; i += step) out.push(sortedDates[i]);
+      if (out[out.length-1] !== sortedDates[sortedDates.length-1]) out.push(sortedDates[sortedDates.length-1]);
+      return out;
+    })();
+    axDates.forEach(function(dk) {
+      h += "<span style='position:absolute;left:" + pct(dk).toFixed(2) + "%;transform:translateX(-50%);font-size:9px;color:var(--tx3);font-family:var(--mo);white-space:nowrap'>" + esc(dk) + "</span>";
+    });
+    h += "</div></div>"; // axis
+
+    h += "</div>"; // lc-compare
+    return h;
+  }
+
+  function buildLifecycle() {
+    lcRecordCache = [];
+
+    var h = "<div class='lc-search-box'>"
+          + "<input type='text' id='lcSearch' placeholder='Search owner by name or id\u2026' value='" + esc(F.lifecycleSearch) + "'>"
+          + "</div>";
+
+    // Suggestions
+    if (F.lifecycleSearch && F.lifecycleSearch.length >= 2) {
+      var sug = lcGetSuggestions();
+      if (sug === null) {
+        h += "<div class='empty'>Loading\u2026</div>";
+      } else if (sug.list.length > 0) {
+        h += "<div class='lc-suggestions'>";
+        sug.list.forEach(function(ow) {
+          var owKey = ow.id || ow.name;
+          var isSel = lcSelected.indexOf(owKey) >= 0;
+          h += "<div class='lc-sug-item" + (isSel ? ' sug-sel' : '') + "' data-sug-key='" + esc(owKey) + "'>"
+             + "<span>" + esc(ow.name) + (ow.id ? "<span style='color:var(--tx3);font-size:10px'> \u00B7 " + esc(ow.id) + "</span>" : "") + "</span>"
+             + (isSel ? "<span style='color:var(--ac);font-size:11px'>\u2714 added</span>"
+                      : "<span style='color:var(--tx3);font-size:11px'>+ add</span>")
+             + "</div>";
+        });
+        if (sug.truncated) h += "<div style='padding:5px 12px;font-size:10px;color:var(--tx3)'>Showing first 20 \u2014 refine search.</div>";
         h += "</div>";
+      } else {
+        h += "<div style='color:var(--tx3);font-size:11px;margin:4px 0 10px'>No matches for \u2018" + esc(F.lifecycleSearch) + "\u2019.</div>";
+      }
+    }
+
+    // Chips
+    if (lcSelected.length > 0) {
+      h += "<div class='lc-chips'>";
+      lcSelected.forEach(function(key) {
+        var od = lcOwnerData[key]; if (!od) return;
+        h += "<div class='lc-chip' style='border-color:" + od.color + ";color:" + od.color + ";background:" + hexToRgba(od.color, 0.08) + "'>"
+           + esc(od.name)
+           + "<button class='lc-chip-rm' data-rm-key='" + esc(key) + "'>&#215;</button>"
+           + "</div>";
       });
       h += "</div>";
-    });
-    if (truncated) h += "<div class='empty'>Showing first 50 owners. Refine your search.</div>";
+    }
+
+    if (lcSelected.length === 0) {
+      if (!F.lifecycleSearch || F.lifecycleSearch.length < 2) {
+        h += "<div class='empty'>Type at least 2 characters to search for an owner, then click to add them to the timeline.</div>";
+      }
+      return h;
+    }
+
+    h += lcBuildTimeline();
     return h;
   }
 
@@ -1048,17 +1485,19 @@
                  ? document.activeElement.selectionStart : -1;
     var tw = document.querySelector('.table-wrap'), twScrl = tw ? tw.scrollTop : 0;
 
-    var pageData, stats, timeline, total, ses, tes, links, allAttrs;
+    var pageData, stats, timeline, total, ses, tes, links, allAttrs, ownerAttrs, resourceAttrs;
     var emptyStats = { total: 0, added: 0, modified: 0, deleted: 0, rtCount: 0 };
 
     if (serverMode) {
-      ses      = serverMeta.sourceEntities  || [];
-      tes      = serverMeta.targetEntities  || [];
-      links    = serverMeta.entityLinks     || { s2t: {}, t2s: {} };
-      allAttrs = (serverResult && serverResult.availableAttrs) || [];
+      ses           = serverMeta.sourceEntities  || [];
+      tes           = serverMeta.targetEntities  || [];
+      links         = serverMeta.entityLinks     || { s2t: {}, t2s: {} };
+      allAttrs      = (serverResult && serverResult.availableAttrs) || [];
+      ownerAttrs    = serverMeta.ownerAttrs    || [];
+      resourceAttrs = serverMeta.resourceAttrs || [];
       total    = serverResult ? serverResult.total    : 0;
       stats    = serverResult ? serverResult.stats    : emptyStats;
-      timeline = serverResult ? serverResult.timeline : [];
+      timeline = serverMeta.fullTimeline || (serverResult ? serverResult.timeline : []);
       pageData = serverResult ? serverResult.records  : [];
 
       // Show initial loading state before first fetch
@@ -1070,13 +1509,15 @@
       }
     } else {
       var localFiltered = getFiltered();
-      ses      = getUniqueValues('sourceEntity');
-      tes      = getUniqueValues('targetEntity');
-      links    = getEntityLinks();
-      allAttrs = getFilteredAttrs();
+      ses           = getUniqueValues('sourceEntity');
+      tes           = getUniqueValues('targetEntity');
+      links         = getEntityLinks();
+      allAttrs      = getFilteredAttrs();
+      ownerAttrs    = getOwnerAttrs();
+      resourceAttrs = getResourceAttrs();
       total    = localFiltered.length;
       stats    = getStats(localFiltered);
-      timeline = getTimeline(localFiltered);
+      timeline = getTimeline(data);
       var tp   = Math.max(1, Math.ceil(total / PAGE_SIZE));
       if (page >= tp) page = tp - 1;
       if (page < 0)   page = 0;
@@ -1089,7 +1530,7 @@
     }
 
     var content = activeTab === 'orders'
-      ? buildOrders(pageData, stats, timeline, total, ses, tes, links, allAttrs)
+      ? buildOrders(pageData, stats, timeline, total, ses, tes, links, allAttrs, ownerAttrs, resourceAttrs)
       : buildLifecycle();
 
     document.getElementById('app').innerHTML = buildHeader(total, stats) + buildTabs() + content;
@@ -1106,24 +1547,68 @@
   // MODAL
   // ═══════════════════════════════════════════════════════════════════════════
 
-  function openOwnerModal(d) {
-    var ow = d.owner || {}, keys = Object.keys(ow);
-    var h  = "<h2>\uD83D\uDC64 Owner Details</h2>"
-           + "<div class='modal-sub'>" + esc(d.ownerName || 'Unknown')
-           + (d.ownerIdentifier ? ' \u00B7 ' + esc(d.ownerIdentifier) : '') + "</div>";
+  function renderAttrValue(k, v) {
+    // Scalar
+    if (v == null)                                        return '<span class="owner-val null-val">null</span>';
+    if (typeof v !== 'object')                            return '<span class="owner-val">' + esc(String(v)) + '</span>';
+    // Array
+    if (Array.isArray(v)) {
+      var repr = JSON.stringify(v);
+      return '<span class="owner-val" title="' + esc(repr) + '">' + esc(repr) + '</span>';
+    }
+    // Object — 1 key: show inline as key.subkey
+    var subKeys = Object.keys(v);
+    if (subKeys.length === 1) {
+      var sk = subKeys[0], sv = v[sk];
+      return '<span class="owner-val"><span style="color:var(--tx3)">' + esc(sk) + ':</span> ' + esc(sv == null ? 'null' : String(sv)) + '</span>';
+    }
+    // Object — multiple keys: show a toggle button
+    var id = 'obj-' + k.replace(/\W/g, '_');
+    var repr = JSON.stringify(v, null, 2);
+    return '<button class="obj-toggle" data-obj-id="' + esc(id) + '" style="font-size:10px;padding:1px 6px;cursor:pointer">'
+         + subKeys.length + ' fields \u25BE</button>'
+         + '<pre id="' + esc(id) + '" class="obj-pre" style="display:none;white-space:pre-wrap;word-break:break-all;font-size:10px;margin:4px 0 0;padding:5px;background:var(--bg);border-radius:3px;border:1px solid var(--brd)">' + esc(repr) + '</pre>';
+  }
+
+  function openDetailsModal(icon, title, subtitle, obj) {
+    var keys = Object.keys(obj || {});
+    var h = "<h2>" + icon + " " + esc(title) + "</h2>"
+          + "<div class='modal-sub'>" + esc(subtitle) + "</div>";
     if (keys.length > 0) {
       h += "<div class='owner-grid'>";
       keys.forEach(function (k) {
-        var v = ow[k];
-        if (v != null && typeof v === 'object') v = JSON.stringify(v);
+        var v = obj[k];
         h += "<div class='owner-item'><span class='owner-key'>" + esc(k) + "</span>"
-           + "<span class='owner-val' title='" + esc(v) + "'>" + esc(v == null ? 'null' : v) + "</span></div>";
+           + renderAttrValue(k, v) + "</div>";
       });
       h += "</div>";
-    } else { h += "<div style='color:var(--tx3);font-size:11px;padding:12px 0'>No owner data.</div>"; }
+    } else {
+      h += "<div style='color:var(--tx3);font-size:11px;padding:12px 0'>No data.</div>";
+    }
     h += "<button class='btn-modal-close' id='modalClose'>Close</button>";
     document.getElementById('modal').innerHTML = h;
     document.getElementById('modalBg').classList.add('open');
+    // Wire up obj-toggle buttons inside modal
+    document.getElementById('modal').addEventListener('click', function (ev) {
+      var btn = ev.target.closest && ev.target.closest('.obj-toggle');
+      if (!btn) return;
+      var pre = document.getElementById(btn.getAttribute('data-obj-id'));
+      if (!pre) return;
+      var open = pre.style.display !== 'none';
+      pre.style.display = open ? 'none' : 'block';
+      var cnt = btn.innerHTML.replace(/[\s▾▴].*/,'').trim();
+      btn.innerHTML = cnt + (open ? ' \u25BE' : ' \u25B4');
+    });
+  }
+
+  function openOwnerModal(d) {
+    var sub = (d.ownerName || 'Unknown') + (d.ownerIdentifier ? ' \u00B7 ' + d.ownerIdentifier : '');
+    openDetailsModal('\uD83D\uDC64', 'Source', sub, d.owner || {});
+  }
+
+  function openResourceModal(d) {
+    var sub = (d.resourceDisplayName || 'Unknown') + (d.resourceIdentifier ? ' \u00B7 ' + d.resourceIdentifier : '');
+    openDetailsModal('\uD83C\uDFAF', 'Target', sub, d.resource || {});
   }
 
   function closeModal() { document.getElementById('modalBg').classList.remove('open'); }
@@ -1144,12 +1629,24 @@
       if (tabEl) {
         activeTab = tabEl.getAttribute('data-tab');
         page = 0;
+        lcActiveOwner = null; lcPanelExpanded = {};
         triggerRender();
         return;
       }
 
       if (t.id === 'btnExport') { exportCSV(); return; }
       if (t.id === 'btnReset')  { resetFilters(); return; }
+
+      var secHdr = t.closest && t.closest('.fp-section-hdr[data-section]');
+      if (secHdr) {
+        var sec  = secHdr.getAttribute('data-section');
+        sectionOpen[sec] = !sectionOpen[sec];
+        var body  = document.getElementById('fp-sec-' + sec);
+        var arrow = secHdr.querySelector('.fp-arrow');
+        if (body)  body.style.display  = sectionOpen[sec] ? '' : 'none';
+        if (arrow) arrow.textContent   = sectionOpen[sec] ? '\u25BE' : '\u25B8';
+        return;
+      }
 
       var thEl = t.closest && t.closest('th[data-sort]');
       if (thEl) {
@@ -1166,11 +1663,89 @@
 
       if (t.id === 'tlClear') { F.dateFrom = ''; F.dateTo = ''; page = 0; triggerRender(); return; }
 
+      if (t.classList && t.classList.contains('btn-lc-owner')) {
+        ev.stopPropagation();
+        var idx = parseInt(t.getAttribute('data-lc-idx'), 10);
+        if (lcRecordCache[idx]) openOwnerModal(lcRecordCache[idx]);
+        return;
+      }
+
+      if (t.classList && t.classList.contains('btn-lc-resource')) {
+        ev.stopPropagation();
+        var idx = parseInt(t.getAttribute('data-lc-idx'), 10);
+        if (lcRecordCache[idx]) openResourceModal(lcRecordCache[idx]);
+        return;
+      }
+
+      // Lifecycle: suggestion click (add/remove owner)
+      var sugEl = t.closest && t.closest('.lc-sug-item[data-sug-key]');
+      if (sugEl) {
+        var sugKey = sugEl.getAttribute('data-sug-key');
+        var selIdx = lcSelected.indexOf(sugKey);
+        if (selIdx >= 0) {
+          lcSelected.splice(selIdx, 1);
+          delete lcOwnerData[sugKey];
+          if (lcActiveOwner === sugKey) lcActiveOwner = null; lcPanelExpanded = {};
+        } else {
+          // Find owner data from current suggestion pool
+          var sug2 = lcGetSuggestions();
+          var found = null;
+          if (sug2) {
+            for (var si = 0; si < sug2.list.length; si++) {
+              if ((sug2.list[si].id || sug2.list[si].name) === sugKey) { found = sug2.list[si]; break; }
+            }
+          }
+          if (found) {
+            var colorIdx = Object.keys(lcOwnerData).length % LC_PALETTE.length;
+            lcOwnerData[sugKey] = { name: found.name, id: found.id, orders: found.orders || [], color: LC_PALETTE[colorIdx] };
+            lcSelected.push(sugKey);
+          }
+        }
+        render(); return;
+      }
+
+      // Lifecycle: chip remove
+      var chipRm = t.closest && t.closest('.lc-chip-rm[data-rm-key]');
+      if (chipRm) {
+        var rmKey = chipRm.getAttribute('data-rm-key');
+        var ri = lcSelected.indexOf(rmKey);
+        if (ri >= 0) lcSelected.splice(ri, 1);
+        delete lcOwnerData[rmKey];
+        if (lcActiveOwner === rmKey) lcActiveOwner = null; lcPanelExpanded = {};
+        render(); return;
+      }
+
+      // Lifecycle: toggle owner's full order list
+      var tlRowEl = t.closest && t.closest('.lc-tl-row[data-lc-owner]');
+      if (tlRowEl) {
+        var owKey = tlRowEl.getAttribute('data-lc-owner');
+        lcActiveOwner   = lcActiveOwner === owKey ? null : owKey;
+        lcPanelExpanded = {};
+        render(); return;
+      }
+
+      // Lifecycle: expand/collapse individual order row in panel
+      var prowEl = t.closest && t.closest('[data-lc-prow]');
+      if (prowEl) {
+        var pKey = prowEl.getAttribute('data-lc-prow');
+        lcPanelExpanded[pKey] = !lcPanelExpanded[pKey];
+        render(); return;
+      }
+
+
       if (t.classList && t.classList.contains('btn-owner')) {
         ev.stopPropagation();
         var gi  = parseInt(t.getAttribute('data-owner-idx'), 10);
         var src = serverMode ? (serverResult ? serverResult.records : []) : getFiltered();
         if (src[gi]) openOwnerModal(src[gi]);
+        return;
+      }
+
+      if (t.classList && t.classList.contains('btn-resource')) {
+        ev.stopPropagation();
+        var gi  = parseInt(t.getAttribute('data-resource-idx'), 10);
+        var src = serverMode ? (serverResult ? serverResult.records : []) : getFiltered();
+        if (src[gi]) openResourceModal(src[gi]);
         return;
       }
 
@@ -1180,16 +1755,17 @@
         triggerRender(); return;
       }
 
-      var rowEl = t.closest && t.closest('tr[data-idx]');
+      var rowEl = t.closest && t.closest('tr[data-expkey]');
       if (rowEl) {
-        var idx   = parseInt(rowEl.getAttribute('data-idx'), 10);
-        var wrap  = rowEl.closest('.table-wrap'), wScrl = wrap ? wrap.scrollTop : 0;
-        var rTop  = rowEl.getBoundingClientRect().top;
-        expanded[idx] = !expanded[idx];
+        var expKey = rowEl.getAttribute('data-expkey');
+        var gi     = parseInt(rowEl.getAttribute('data-idx'), 10);
+        var wrap   = rowEl.closest('.table-wrap'), wScrl = wrap ? wrap.scrollTop : 0;
+        var rTop   = rowEl.getBoundingClientRect().top;
+        expanded[expKey] = !expanded[expKey];
         render();   // expand/collapse never needs a server refetch
         var wrap2 = document.querySelector('.table-wrap');
         if (wrap2) wrap2.scrollTop = wScrl;
-        var row2 = document.querySelector("tr[data-idx='" + idx + "']");
+        var row2 = document.querySelector("tr[data-idx='" + gi + "']");
         if (row2) window.scrollTo(0, (window.pageYOffset || document.documentElement.scrollTop) + (row2.getBoundingClientRect().top - rTop));
       }
     });
@@ -1203,6 +1779,8 @@
         case 'fDateTo':        F.dateTo       = t.value; page = 0; triggerRender(); break;
         case 'fChangesMin':    F.changesMin   = t.value; page = 0; triggerRender(); break;
         case 'fChangesMax':    F.changesMax   = t.value; page = 0; triggerRender(); break;
+        case 'fOwnerAttr':     F.ownerAttr    = t.value; page = 0; triggerRender(); break;
+        case 'fResourceAttr':  F.resourceAttr = t.value; page = 0; triggerRender(); break;
         case 'fChangesAttr':   F.changesAttr  = t.value; page = 0; triggerRender(); break;
         case 'fRolesDir':      F.rolesDir     = t.value; page = 0; triggerRender(); break;
         case 'fRolesMin':      F.rolesMin     = t.value; page = 0; triggerRender(); break;
@@ -1216,10 +1794,24 @@
       switch (t.id) {
         case 'fSearch':
           debounceTimer = setTimeout(function () { F.search = val; page = 0; triggerRender(); }, 250); break;
+        case 'fOwnerName':
+          debounceTimer = setTimeout(function () { F.ownerName = val; page = 0; triggerRender(); }, 250); break;
+        case 'fOwnerIdentifier':
+          debounceTimer = setTimeout(function () { F.ownerIdentifier = val; page = 0; triggerRender(); }, 250); break;
+        case 'fOwnerAttrValue':
+          debounceTimer = setTimeout(function () { F.ownerAttrValue = val; page = 0; triggerRender(); }, 250); break;
+        case 'fResourceName':
+          debounceTimer = setTimeout(function () { F.resourceName = val; page = 0; triggerRender(); }, 250); break;
+        case 'fResourceIdentifier':
+          debounceTimer = setTimeout(function () { F.resourceIdentifier = val; page = 0; triggerRender(); }, 250); break;
+        case 'fResourceAttrValue':
+          debounceTimer = setTimeout(function () { F.resourceAttrValue = val; page = 0; triggerRender(); }, 250); break;
         case 'fChangesValue':
           debounceTimer = setTimeout(function () { F.changesValue = val; page = 0; triggerRender(); }, 250); break;
+        case 'fRolesValue':
+          debounceTimer = setTimeout(function () { F.rolesValue = val; page = 0; triggerRender(); }, 250); break;
         case 'lcSearch':
-          debounceTimer = setTimeout(function () { F.lifecycleSearch = val; triggerRender(); }, 300); break;
+          debounceTimer = setTimeout(function () { F.lifecycleSearch = val; lcActiveOwner = null; lcPanelExpanded = {}; triggerRender(); }, 300); break;
       }
     });
 
@@ -1232,7 +1824,7 @@
       highlightTlRange(d, d);
     });
 
-    document.addEventListener('mouseover', function (ev) {
+    document.addEventListener('mousemove', function (ev) {
       if (!tlDrag.active) return;
       var bar = ev.target.closest && ev.target.closest('.tl-bar-group[data-date]');
       if (!bar) return;

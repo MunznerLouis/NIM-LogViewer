@@ -4,3 +4,6 @@ LogViewer.html
 # Sample / test data
 SampleData/
 New-SampleData.ps1
+
+# Claude Code memory
+.claude/
