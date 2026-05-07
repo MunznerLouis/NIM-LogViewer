@@ -22,7 +22,7 @@
       --acd2:  rgba(91, 71, 224, .15);
       --add:   #16a34a;
       --addbg: #dcfce7;
-      --mod:   #ca8a04;
+      --mod:   #00a508;
       --modbg: #fef9c3;
       --del:   #dc2626;
       --delbg: #fee2e2;
@@ -33,6 +33,7 @@
 
     /* ── Reset & base ──────────────────────────────────────────────────────── */
     * { margin: 0; padding: 0; box-sizing: border-box; }
+    @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.3} }
     body { background: var(--bg); color: var(--tx); font-family: var(--fn); line-height: 1.5; }
     ::-webkit-scrollbar { width: 6px; height: 6px; }
     ::-webkit-scrollbar-track { background: var(--bg); }
@@ -387,6 +388,74 @@
       .hdr-stats { display: none; }
       .owner-grid { grid-template-columns: 1fr; }
     }
+
+    /* ── Provisioning State — 3 rectangles like Usercube UI ──────────────── */
+    .ps-wrap { display: inline-flex; align-items: center; gap: 1px; vertical-align: middle; }
+    .ps-r {
+      width: 13px; height: 7px;
+      display: inline-block;
+    }
+    .ps-filled { border: none; }
+    .ps-empty {
+      background: #e0e0e0;
+      border: none;
+    }
+    .ps-lbl { font-size: 11px; margin-left: 6px; font-family: var(--fn); color: var(--tx); white-space: nowrap; }
+
+    /* ── Pending counter ───────────────────────────────────────────────────── */
+    .pend-counter {
+      font-size: 28px; font-weight: 800; font-family: var(--mo);
+      color: var(--ac); line-height: 1;
+    }
+    .pend-counter-sub { font-size: 11px; color: var(--tx3); font-family: var(--mo); }
+
+    /* ── Pending detail panel ──────────────────────────────────────────────── */
+    .pend-detail { padding: 12px 14px; background: var(--card2); border-top: 2px solid var(--ac); }
+    .pend-section-title { font-size: 10px; font-weight: 700; color: var(--tx2); text-transform: uppercase; letter-spacing: .5px; margin: 10px 0 4px; }
+    .pend-tbl { width: 100%; border-collapse: collapse; font-size: 11px; font-family: var(--mo); margin-bottom: 6px; }
+    .pend-tbl thead th {
+      text-align: left; padding: 5px 8px; font-size: 9px; text-transform: uppercase;
+      letter-spacing: .5px; color: var(--tx3); background: var(--card);
+      border-bottom: 1px solid var(--brd); font-weight: 600;
+    }
+    .pend-tbl tbody td { padding: 4px 8px; border-bottom: 1px solid var(--brd); vertical-align: middle; }
+    .pend-tbl tbody tr:hover { background: var(--hover); }
+    .pend-row-hl { background: var(--modbg) !important; }
+    .pend-row-hl td { border-left-color: var(--mod); }
+    .pend-cancel-nav {
+      padding: 1px 5px; font-size: 9px; background: var(--delbg); color: var(--del);
+      border: 1px solid var(--del); border-radius: 3px; cursor: pointer;
+    }
+    .pend-cancel-art {
+      padding: 3px 10px; font-size: 10px; background: var(--delbg); color: var(--del);
+      border: 1px solid var(--del); border-radius: var(--r); cursor: pointer; font-weight: 600;
+      font-family: var(--mo);
+    }
+    .pend-warn {
+      background: var(--modbg); border: 1px solid var(--mod); border-radius: var(--r);
+      padding: 8px 12px; margin: 8px 0; font-size: 11px; color: var(--mod);
+    }
+    .pend-progress { height: 4px; background: var(--brd); border-radius: 2px; overflow: hidden; margin: 8px 0; }
+    .pend-progress-bar { height: 100%; background: var(--ac); transition: width .3s; border-radius: 2px; }
+    .null-val { color: var(--tx3); font-style: italic; }
+
+    /* ── Workflow State tooltip ─────────────────────────────────────────────── */
+    .wf-wrap { display: inline-flex; align-items: center; gap: 3px; position: relative; }
+    .wf-lbl { font-size: 10px; font-family: var(--mo); color: var(--tx2); }
+    .wf-info {
+      display: inline-flex; align-items: center; justify-content: center;
+      width: 14px; height: 14px; border-radius: 50%;
+      background: var(--acd); color: var(--ac); font-size: 9px; font-weight: 700;
+      cursor: help; flex-shrink: 0;
+    }
+    .wf-info:hover + .wf-tip, .wf-tip:hover { display: block; }
+    .wf-tip {
+      display: none; position: absolute; bottom: 100%; left: 50%; transform: translateX(-50%);
+      background: var(--card); border: 1px solid var(--brd); border-radius: 4px;
+      padding: 6px 10px; font-size: 10px; font-family: var(--mo); color: var(--tx);
+      white-space: nowrap; z-index: 200; box-shadow: 0 4px 12px rgba(0,0,0,.2);
+      margin-bottom: 4px; max-width: 320px; white-space: normal; line-height: 1.4;
+    }
   </style>
 </head>
 <body>
@@ -495,16 +564,28 @@
 
   function triggerRender() {
     if (!serverMode) { render(); return; }
-    if (activeTab === 'lifecycle') { fetchLifecycle(); } else { fetchAndRender(); }
+    if (activeTab === 'lifecycle') { fetchLifecycle(); }
+    else if (activeTab === 'pending') { fetchPending(); }
+    else { fetchAndRender(); }
   }
 
+  var lastFetchedParams = null;
+
   function fetchAndRender() {
+    var params = buildQueryParams();
+    // If filters/sort/page are unchanged since last fetch, skip the network call —
+    // tab switches re-enter this function with the same params and the data is static.
+    if (params === lastFetchedParams && serverResult) {
+      render();
+      return;
+    }
     var seq = ++fetchSeq;
-    fetch(apiBase + '/api/query?' + buildQueryParams())
+    fetch(apiBase + '/api/query?' + params)
       .then(function (r) { return r.json(); })
       .then(function (result) {
         if (seq !== fetchSeq) return;
         serverResult = result;
+        lastFetchedParams = params;
         render();
       })
       .catch(function () {
@@ -529,6 +610,377 @@
         render();
       });
   }
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // PENDING — grouped by Owner+ART
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  var pendingGroups  = [];
+  var pendingLoading = false;
+  var pendingError   = '';
+  var pendingExpanded = {};
+  var pendingDetail   = {};
+  var pendingDetailLoading = {};
+  var pendingFilter   = '';       // owner name search (shown via lens icon)
+  var pendingFilterOpen = false;  // whether the owner search input is visible
+  var pendingPropFilters = [];    // property name chips (OR logic)
+  var pendingPropInput   = '';
+  var pendingValFilter   = '';    // value text filter
+  var pendingArtFilter   = '__all__'; // dropdown: '__all__' or specific roleName
+  var pendingSortCol     = 'ownerName';
+  var pendingSortDir     = 'asc';
+  var pPage = 0;
+  var pendingBulkProgress = null;
+
+  var PROV_STATES = {
+    0: { label: 'None',              rects: [0, 0, 0] },
+    1: { label: 'Pending',           rects: ['#bdbdbd', 0, 0] },
+    2: { label: 'Transmitted',       rects: ['#42a5f5', '#42a5f5', 0] },
+    3: { label: 'Errored',           rects: ['#e53935', '#e53935', 0] },
+    4: { label: 'Verified',          rects: ['#689f38', '#689f38', '#689f38'] },
+    5: { label: 'Awaiting approval', rects: ['#f9a825', 0, 0] },
+    6: { label: 'Inactive',          rects: ['#e53935', '#e53935', 0] },
+    7: { label: 'RuntimeErrored',    rects: ['#e53935', '#e53935', 0] },
+    8: { label: 'Executed',          rects: ['#689f38', '#689f38', '#689f38'] }
+  };
+
+  function renderProvState(state) {
+    var ps = PROV_STATES[state] || PROV_STATES[0];
+    var h = "<span class='ps-wrap' title='" + ps.label + "'>";
+    for (var ri = 0; ri < 3; ri++) {
+      var c = ps.rects[ri];
+      h += c ? "<span class='ps-r ps-filled' style='background:" + c + ";border-color:" + c + "'></span>"
+             : "<span class='ps-r ps-empty'></span>";
+    }
+    return h + "<span class='ps-lbl'>" + ps.label + "</span></span>";
+  }
+
+  var WF_STATES = {
+    0:   { label: 'None',                         desc: 'Internal computation' },
+    1:   { label: 'Non-conforming',                desc: 'Assignment not supported by a rule' },
+    3:   { label: 'Pre-existing',                  desc: 'Not supported by a rule, existed before production launch' },
+    4:   { label: 'Requested',                     desc: 'Requested via workflow, not yet added' },
+    5:   { label: 'Calculated - Missing Params',   desc: 'Rule does not specify all required parameters' },
+    8:   { label: 'Pending Approval',              desc: 'Must be reviewed manually' },
+    9:   { label: 'Pending Approval 1/2',          desc: 'Pending first approval (two-step)' },
+    10:  { label: 'Pending Approval 2/2',          desc: 'Pending second approval (two-step)' },
+    11:  { label: 'Pending Approval 1/3',          desc: 'Pending first approval (three-step)' },
+    12:  { label: 'Pending Approval 2/3',          desc: 'Pending second approval (three-step)' },
+    13:  { label: 'Pending Approval 3/3',          desc: 'Pending third approval (three-step)' },
+    16:  { label: 'Approved',                      desc: 'All approval steps completed' },
+    17:  { label: 'Declined',                      desc: 'Explicitly declined during approval' },
+    18:  { label: 'Calculated',                    desc: 'Given by a Usercube rule' },
+    19:  { label: 'Inactive',                      desc: 'Expired, not yet removed' },
+    20:  { label: 'Cancellation',                  desc: 'Inferred by a declined role' },
+    21:  { label: 'Suggested',                     desc: 'From a Suggested rule, appears in permission basket' },
+    22:  { label: 'Suggested',                     desc: 'From Automatic+Validation rule, for pre-existing user' },
+    23:  { label: 'Auto + Validation',             desc: 'From Automatic+Validation rule, new user basket' },
+    24:  { label: 'Approved - Questioned',         desc: 'Approved manually, then source data changed but approval is authoritative' },
+    25:  { label: 'Pending Approval - Risk',       desc: 'Must be reviewed due to a risk' },
+    26:  { label: 'Blocked',                       desc: 'Blocked due to a Blocking risk' },
+    27:  { label: 'Prolonged',                     desc: 'Expired but within grace period' },
+    116: { label: 'Approved - Risk',               desc: 'Approved despite a risk' },
+    118: { label: 'Given by a Role',               desc: 'Created automatically from a role assignment' }
+  };
+
+  function renderWfState(state) {
+    if (state == null) return '-';
+    var ws = WF_STATES[state];
+    if (!ws) return "<span class='wf-wrap'><span class='wf-lbl'>" + esc(String(state)) + "</span></span>";
+    return "<span class='wf-wrap'>"
+      + "<span class='wf-lbl'>" + esc(ws.label) + "</span>"
+      + "<span class='wf-info'>i</span>"
+      + "<span class='wf-tip'><strong>" + state + " \u2014 " + esc(ws.label) + "</strong><br>" + esc(ws.desc) + "</span>"
+      + "</span>";
+  }
+
+  function fetchPending() {
+    pendingLoading = true; pendingError = ''; pendingDetail = {}; pendingDetailLoading = {}; render();
+    fetch(apiBase + '/api/pending')
+      .then(function (r) { return r.json(); })
+      .then(function (result) {
+        pendingLoading = false;
+        if (result && result.error) { pendingError = result.error; pendingGroups = []; }
+        else { pendingGroups = (result && result.groups) ? result.groups : []; }
+        render();
+      })
+      .catch(function (e) {
+        pendingLoading = false; pendingError = e.message || 'Network error'; pendingGroups = []; render();
+      });
+  }
+
+  function fetchPendingDetail(gi) {
+    var g = pendingGroups[gi]; if (!g) return;
+    pendingDetailLoading[gi] = true; render();
+    fetch(apiBase + '/api/pending/detail?ownerId=' + encodeURIComponent(g.ownerId) + '&artId=' + encodeURIComponent(g.artId))
+      .then(function (r) { return r.json(); })
+      .then(function (res) { pendingDetailLoading[gi] = false; pendingDetail[gi] = (res && res.error) ? { error: res.error } : res; render(); })
+      .catch(function (e) { pendingDetailLoading[gi] = false; pendingDetail[gi] = { error: e.message || 'Network error' }; render(); });
+  }
+
+  function cancelNavigation(navId, gi) {
+    showConfirmModal('Cancel Navigation', 'Set navigation <strong>' + esc(navId) + '</strong> back to Awaiting Approval?', function () {
+      apiPost('/api/cancel/navigation', { navigationId: navId }, function (err, res) {
+        if (err || !res || !res.success) alert('Error: ' + (err ? err.message : res ? res.message : 'Unknown'));
+        delete pendingDetail[gi]; fetchPendingDetail(gi);
+      });
+    });
+  }
+
+  function cancelART(artId, gi, ownerName) {
+    var det = pendingDetail[gi];
+    var ih = '<div class="pend-warn"><strong>\u26A0 Warning:</strong> Cancelling a scalar requires cancelling the <strong>entire ART</strong>. ALL attributes will be set to Awaiting Approval.</div>';
+    if (det && !det.error) {
+      ih += '<table style="width:100%;font-family:var(--mo);font-size:10px;margin-top:6px;border-collapse:collapse">'
+        + '<tr style="border-bottom:1px solid var(--brd)"><th style="text-align:left;padding:2px 6px">Property</th><th style="text-align:left;padding:2px 6px">Value</th><th style="padding:2px 6px">State</th></tr>';
+      (det.scalars || []).forEach(function (s) {
+        ih += '<tr style="border-bottom:1px solid var(--brd)"><td style="padding:2px 6px">' + esc(s.propertyName || s.propertyIdent) + '</td><td style="padding:2px 6px">' + esc(s.value == null ? '' : String(s.value)) + '</td><td style="padding:2px 6px">' + renderProvState(s.provState) + '</td></tr>';
+      });
+      (det.navigations || []).forEach(function (n) {
+        ih += '<tr style="border-bottom:1px solid var(--brd)"><td style="padding:2px 6px">' + esc(n.propertyName || n.propertyIdent) + '</td><td style="padding:2px 6px">' + esc(n.resourceName || '?') + '</td><td style="padding:2px 6px">' + renderProvState(n.provState) + '</td></tr>';
+      });
+      ih += '</table>';
+    }
+    showConfirmModal('Cancel Pending \u2014 ' + esc(ownerName || '?'), ih, function () {
+      apiPost('/api/cancel/art', { artId: artId }, function (err, res) {
+        if (err || !res || !res.success) alert('Error: ' + (err ? err.message : res ? res.message : 'Unknown'));
+        fetchPending();
+      });
+    });
+  }
+
+  function cancelAllFiltered() {
+    var filtered = getFilteredPending();
+    if (!filtered.length) { alert('No pending orders match the current filter.'); return; }
+    var artIds = filtered.map(function (g) { return g.artId; });
+    var recap = {};
+    filtered.forEach(function (g) { var rn = g.roleName || g.artId; recap[rn] = (recap[rn] || 0) + 1; });
+    var rh = '<div class="pend-warn"><strong>\u26A0 ' + artIds.length + ' ART(s) will be cancelled</strong></div>'
+      + '<div style="margin-top:8px;font-size:12px;font-family:var(--mo)">';
+    Object.keys(recap).sort().forEach(function (rn) {
+      rh += '<div style="display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px solid var(--brd)"><span>' + esc(rn) + '</span><strong>' + recap[rn] + '</strong></div>';
+    });
+    rh += '<div style="display:flex;justify-content:space-between;padding:6px 0;font-weight:700;font-size:14px;border-top:2px solid var(--tx2);margin-top:2px"><span>Total</span><span>' + artIds.length + '</span></div></div>';
+    showConfirmModal('Cancel ALL filtered Pending orders', rh, function () {
+      pendingBulkProgress = { done: 0, total: artIds.length }; render();
+      apiPost('/api/cancel/bulk', { artIds: artIds }, function (err, res) {
+        pendingBulkProgress = null;
+        if (err) alert('Error: ' + err.message);
+        else if (res && !res.success) alert(res.message + (res.errors && res.errors.length ? '\n' + res.errors.join('\n') : ''));
+        fetchPending();
+      });
+    });
+  }
+
+  function apiPost(url, body, cb) {
+    fetch(apiBase + url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
+    .then(function (r) { return r.json(); }).then(function (res) { cb(null, res); }).catch(function (e) { cb(e); });
+  }
+
+  function showConfirmModal(title, msg, onConfirm) {
+    var h = "<h2>" + title + "</h2><div style='margin:8px 0'>" + msg + "</div>"
+      + "<div style='display:flex;gap:8px;margin-top:14px'>"
+      + "<button id='modalConfirm' style='padding:6px 16px;background:var(--del);color:#fff;border:none;border-radius:var(--r);font-size:12px;font-weight:600;cursor:pointer;font-family:var(--mo)'>Confirm</button>"
+      + "<button id='modalClose' style='padding:6px 16px;background:var(--card2);color:var(--tx2);border:1px solid var(--brd);border-radius:var(--r);font-size:12px;font-weight:600;cursor:pointer;font-family:var(--mo)'>Cancel</button></div>";
+    document.getElementById('modal').innerHTML = h;
+    document.getElementById('modalBg').classList.add('open');
+    document.getElementById('modalConfirm').onclick = function () { document.getElementById('modalBg').classList.remove('open'); onConfirm(); };
+    document.getElementById('modalClose').onclick = function () { document.getElementById('modalBg').classList.remove('open'); };
+    document.getElementById('modalBg').onclick = function (ev) { if (ev.target === this) this.classList.remove('open'); };
+  }
+
+  // ── Filtering + sorting ────────────────────────────────────────────────
+
+  function getFilteredPending() {
+    var list = pendingGroups;
+    // ART dropdown
+    if (pendingArtFilter !== '__all__') {
+      list = list.filter(function (g) { return (g.roleName || g.artId) === pendingArtFilter; });
+    }
+    // Owner name search
+    if (pendingFilter) {
+      var q = pendingFilter.toLowerCase();
+      list = list.filter(function (g) { return g.ownerName && g.ownerName.toLowerCase().indexOf(q) >= 0; });
+    }
+    // Property name chips (OR: group matches if ANY chip matches any property)
+    if (pendingPropFilters.length > 0) {
+      list = list.filter(function (g) {
+        var ap = [];
+        (g.scalars || []).forEach(function (s) { ap.push((s.propertyName || '').toLowerCase()); ap.push((s.propertyIdent || '').toLowerCase()); });
+        (g.navigations || []).forEach(function (n) { ap.push((n.propertyName || '').toLowerCase()); ap.push((n.propertyIdent || '').toLowerCase()); });
+        return pendingPropFilters.some(function (chip) {
+          var cq = chip.toLowerCase();
+          return ap.some(function (p) { return p.indexOf(cq) >= 0; });
+        });
+      });
+    }
+    // Value filter
+    if (pendingValFilter) {
+      var vq = pendingValFilter.toLowerCase();
+      list = list.filter(function (g) {
+        var found = false;
+        (g.scalars || []).forEach(function (s) { if (s.value != null && String(s.value).toLowerCase().indexOf(vq) >= 0) found = true; });
+        if (!found) (g.navigations || []).forEach(function (n) { if (n.resourceName && n.resourceName.toLowerCase().indexOf(vq) >= 0) found = true; });
+        return found;
+      });
+    }
+    // Sort
+    var col = pendingSortCol, dir = pendingSortDir === 'asc' ? 1 : -1;
+    list = list.slice().sort(function (a, b) {
+      var va, vb;
+      if (col === 'ownerName')  { va = (a.ownerName || '').toLowerCase(); vb = (b.ownerName || '').toLowerCase(); }
+      else if (col === 'roleName')   { va = (a.roleName || '').toLowerCase(); vb = (b.roleName || '').toLowerCase(); }
+      else if (col === 'workflowId') { va = (a.workflowId || ''); vb = (b.workflowId || ''); }
+      else if (col === 'scalars')    { va = (a.scalars ? a.scalars.length : 0); vb = (b.scalars ? b.scalars.length : 0); }
+      else if (col === 'navs')       { va = (a.navigations ? a.navigations.length : 0); vb = (b.navigations ? b.navigations.length : 0); }
+      else { va = a[col] || ''; vb = b[col] || ''; }
+      if (va < vb) return -1 * dir; if (va > vb) return 1 * dir; return 0;
+    });
+    return list;
+  }
+
+  function fmtDate(d) {
+    if (!d) return '-';
+    try { var dt = new Date(d); return isNaN(dt) ? esc(String(d)) : (dt.getMonth()+1) + '/' + dt.getDate() + '/' + dt.getFullYear(); }
+    catch (e) { return esc(String(d)); }
+  }
+
+  function pendingSortIcon(col) {
+    if (pendingSortCol !== col) return ' <span style="opacity:.3">\u25B4\u25BE</span>';
+    return pendingSortDir === 'asc' ? ' \u25B4' : ' \u25BE';
+  }
+
+  // ── Build ──────────────────────────────────────────────────────────────
+
+  function buildPending() {
+    var h = '';
+    if (!serverMode) {
+      return "<div style='background:var(--card2);border:1px solid var(--brd);border-radius:var(--r);padding:40px;text-align:center;color:var(--tx3)'>"
+        + "<h3 style='font-size:16px;margin-bottom:8px;color:var(--tx2)'>\u26A0 Live mode not active</h3>"
+        + "<p style='font-size:12px;font-family:var(--mo)'>Run with <strong>-Serve</strong> to enable.</p></div>";
+    }
+
+    var filtered = getFilteredPending();
+
+    // ── Big counter + toolbar ─────────────────────────────────────────────
+    h += "<div style='display:flex;align-items:center;gap:16px;margin-bottom:14px;flex-wrap:wrap'>";
+    h += "<div style='display:flex;align-items:baseline;gap:8px'>"
+      + "<span class='pend-counter'>" + filtered.length + "</span>"
+      + "<span class='pend-counter-sub'>/ " + pendingGroups.length + " Order" + (pendingGroups.length !== 1 ? 's' : '') + "</span></div>";
+    h += "<button class='btn-ex' id='btnRefreshPending'>\u21BB Refresh</button>";
+    if (pendingLoading) h += "<span style='color:var(--mod);font-size:11px'>Loading...</span>";
+    h += "<button class='pend-cancel-art' id='btnCancelAllFiltered' style='margin-left:auto'>\u2715 Cancel all filtered Pending</button>";
+    h += "</div>";
+
+    if (pendingError) h += "<div style='background:var(--modbg);border:1px solid var(--mod);border-radius:var(--r);padding:12px 16px;margin-bottom:14px;font-size:12px;color:var(--mod)'>\u26A0 " + esc(pendingError) + "</div>";
+    if (pendingBulkProgress) h += "<div style='margin-bottom:12px'><div style='font-size:11px;color:var(--tx2);margin-bottom:4px'>Cancelling " + pendingBulkProgress.done + "/" + pendingBulkProgress.total + "</div><div class='pend-progress'><div class='pend-progress-bar' style='width:" + Math.round((pendingBulkProgress.done/pendingBulkProgress.total)*100) + "%'></div></div></div>";
+    if (!pendingGroups.length && !pendingLoading) return h + "<div class='empty'>No pending orders." + (pendingError ? '' : ' Click Refresh.') + "</div>";
+
+    // ── Filters ──────────────────────────────────────────────────────────
+    h += "<div class='fp' style='margin-bottom:12px'><div class='fp-rows'>";
+
+    // ART dropdown
+    var artNames = {}; pendingGroups.forEach(function (g) { artNames[g.roleName || g.artId] = true; });
+    var artList = Object.keys(artNames).sort();
+    h += "<div class='fp-group'><span class='fp-lbl'>ART / Role</span>"
+      + "<select id='pendingArtSelect' style='min-width:180px'><option value='__all__'" + (pendingArtFilter === '__all__' ? ' selected' : '') + ">All (" + artList.length + ")</option>";
+    artList.forEach(function (an) {
+      var cnt = pendingGroups.filter(function (g) { return (g.roleName || g.artId) === an; }).length;
+      h += "<option value='" + esc(an) + "'" + (pendingArtFilter === an ? ' selected' : '') + ">" + esc(an) + " (" + cnt + ")</option>";
+    });
+    h += "</select></div>";
+
+    // Property chips + input
+    h += "<div class='fp-group' style='min-width:200px;flex:1'><span class='fp-lbl'>Property (OR)</span><div style='display:flex;flex-wrap:wrap;gap:4px;align-items:center;margin-bottom:4px'>";
+    pendingPropFilters.forEach(function (chip, ci) {
+      h += "<span class='lc-chip' style='background:var(--acd);border-color:var(--ac);color:var(--ac);font-size:10px;padding:2px 6px 2px 8px'>" + esc(chip) + "<button class='lc-chip-rm pend-prop-rm' data-prop-idx='" + ci + "' style='color:var(--ac)'>\u00D7</button></span>";
+    });
+    h += "<input type='text' id='pendingPropInput' placeholder='e.g. Mail, MemberOf...' value='" + esc(pendingPropInput) + "' style='flex:1;min-width:100px;background:var(--bg);border:1px solid var(--brd);color:var(--tx);padding:3px 7px;border-radius:4px;font-family:var(--mo);font-size:10px;outline:none' /></div>"
+      + "<div style='font-size:9px;color:var(--tx3)'>Enter to add. Shows group if ANY chip matches.</div></div>";
+
+    // Value filter
+    h += "<div class='fp-group' style='min-width:140px'><span class='fp-lbl'>Value contains</span>"
+      + "<input type='text' id='pendingValInput' placeholder='e.g. I_All_Internal' value='" + esc(pendingValFilter) + "' /></div>";
+
+    h += "</div></div>";
+
+    // ── Table ────────────────────────────────────────────────────────────
+    var ptp = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
+    if (pPage >= ptp) pPage = ptp - 1; if (pPage < 0) pPage = 0;
+    var ppd = filtered.slice(pPage * PAGE_SIZE, (pPage + 1) * PAGE_SIZE);
+
+    h += "<div class='table-wrap' style='max-height:70vh;overflow-y:auto'><table><thead><tr>"
+      + "<th data-psort='ownerName' style='cursor:pointer'>Owner" + pendingSortIcon('ownerName');
+    // Lens icon for owner search
+    h += " <span id='pendingOwnerLens' style='cursor:pointer;font-size:11px;opacity:.5' title='Search owner'>\uD83D\uDD0D</span>";
+    if (pendingFilterOpen) {
+      h += "<div style='margin-top:4px'><input type='text' id='pendingOwnerSearch' placeholder='Search...' value='" + esc(pendingFilter) + "' style='width:120px;font-size:10px;padding:2px 5px;background:var(--bg);border:1px solid var(--brd);border-radius:3px;color:var(--tx);font-family:var(--mo);outline:none' /></div>";
+    }
+    h += "</th>"
+      + "<th data-psort='roleName' style='cursor:pointer'>ResourceType" + pendingSortIcon('roleName') + "</th>"
+      + "<th data-psort='workflowId' style='cursor:pointer'>Workflow" + pendingSortIcon('workflowId') + "</th>"
+      + "<th data-psort='scalars' style='cursor:pointer;text-align:center'>Scalars" + pendingSortIcon('scalars') + "</th>"
+      + "<th data-psort='navs' style='cursor:pointer;text-align:center'>Navs" + pendingSortIcon('navs') + "</th>"
+      + "<th>ART State</th><th>Actions</th></tr></thead><tbody>";
+
+    if (!ppd.length) h += "<tr><td colspan='7' class='empty'>No matching Orders.</td></tr>";
+
+    ppd.forEach(function (g, i) {
+      var origIdx = pendingGroups.indexOf(g);
+      var isExp = !!pendingExpanded[origIdx];
+      var sep = i > 0 ? "border-top:3px solid var(--brd2);" : "";
+
+      h += "<tr data-pidx='" + origIdx + "' style='" + sep + "'>"
+        + "<td><div style='font-weight:600'>" + esc(g.ownerName || '\u2014') + "</div></td>"
+        + "<td><div style='font-weight:500;font-size:10px'>" + esc(g.roleName || '?') + "</div><div style='font-size:9px;color:var(--tx3)'>ART " + esc(g.artId) + "</div></td>"
+        + "<td><span style='font-size:10px;color:var(--ac)'>" + esc(g.workflowId || '\u2014') + "</span></td>"
+        + "<td style='text-align:center;color:var(--tx2)'>" + (g.scalars ? g.scalars.length : 0) + "</td>"
+        + "<td style='text-align:center;color:var(--tx2)'>" + (g.navigations ? g.navigations.length : 0) + "</td>"
+        + "<td>" + renderProvState(g.artProvState != null ? g.artProvState : 1) + "</td>"
+        + "<td><button class='pend-cancel-art btn-cancel-art' data-pidx='" + origIdx + "'>\u2715 Cancel Pending</button></td></tr>";
+
+      if (isExp) {
+        h += "<tr><td colspan='7' style='padding:0'><div class='pend-detail'>";
+        var det = pendingDetail[origIdx], detL = !!pendingDetailLoading[origIdx];
+        if (!det && !detL) {
+          h += "<button class='btn-ex btn-load-detail' data-pidx='" + origIdx + "'>Load full details</button>";
+        } else if (detL) {
+          h += "<div style='color:var(--mod);font-size:11px;padding:8px'>Loading...</div>";
+        } else if (det.error) {
+          h += "<div style='color:var(--del);font-size:11px;padding:8px'>\u26A0 " + esc(det.error) + "</div><button class='btn-ex btn-load-detail' data-pidx='" + origIdx + "' style='margin-top:4px'>Retry</button>";
+        } else {
+          if (det.scalars && det.scalars.length) {
+            h += "<div class='pend-section-title'>Scalars (" + det.scalars.length + ")</div><table class='pend-tbl'><thead><tr><th>Resource Property</th><th>Value</th><th>Start Date</th><th>End Date</th><th>Workflow State</th><th>Provisioning State</th></tr></thead><tbody>";
+            det.scalars.forEach(function (s) {
+              var hl = s.provState === 1;
+              h += "<tr" + (hl ? " class='pend-row-hl'" : "") + "><td>" + esc(s.propertyName || s.propertyIdent) + "</td><td>" + (s.value == null ? "<span class='null-val'>No value</span>" : esc(String(s.value))) + "</td><td>" + fmtDate(s.startDate) + "</td><td>" + fmtDate(s.endDate) + "</td><td>" + renderWfState(s.workflowState) + "</td><td>" + renderProvState(s.provState) + "</td></tr>";
+            });
+            h += "</tbody></table>";
+          }
+          if (det.navigations && det.navigations.length) {
+            h += "<div class='pend-section-title' style='margin-top:12px'>Navigations (" + det.navigations.length + ")</div><table class='pend-tbl'><thead><tr><th>Resource Property</th><th>Value</th><th>Start Date</th><th>End Date</th><th>Workflow State</th><th>Provisioning State</th><th></th></tr></thead><tbody>";
+            det.navigations.forEach(function (n) {
+              var hl = n.provState === 1;
+              h += "<tr" + (hl ? " class='pend-row-hl'" : "") + "><td>" + esc(n.propertyName || n.propertyIdent) + "</td><td>" + esc(n.resourceName || '?') + (n.isDenied ? " <span style='color:var(--del)'>(denied)</span>" : "") + "</td><td>" + fmtDate(n.startDate) + "</td><td>" + fmtDate(n.endDate) + "</td><td>" + renderWfState(n.workflowState) + "</td><td>" + renderProvState(n.provState) + "</td><td>" + (hl ? "<button class='pend-cancel-nav' data-nav-id='" + esc(n.id) + "' data-pidx='" + origIdx + "'>\u2715</button>" : "") + "</td></tr>";
+            });
+            h += "</tbody></table>";
+          }
+          if ((!det.scalars || !det.scalars.length) && (!det.navigations || !det.navigations.length)) h += "<div style='color:var(--tx3);font-size:11px;padding:8px'>No attributes.</div>";
+        }
+        h += "</div></td></tr>";
+      }
+    });
+
+    h += "</tbody></table>";
+    if (filtered.length > PAGE_SIZE) {
+      h += "<div class='pagination'><span>Page " + (pPage+1) + "/" + ptp + " (" + filtered.length + ")</span><div class='page-btns'>"
+        + "<button data-ppg='0'" + (pPage===0?" disabled":"") + ">\u00AB</button><button data-ppg='" + (pPage-1) + "'" + (pPage===0?" disabled":"") + ">\u2039</button>"
+        + "<button data-ppg='" + (pPage+1) + "'" + (pPage>=ptp-1?" disabled":"") + ">\u203A</button><button data-ppg='" + (ptp-1) + "'" + (pPage>=ptp-1?" disabled":"") + ">\u00BB</button></div></div>";
+    }
+    h += "</div>";
+    return h;
+  }
+
 
   function buildQueryParams() {
     var p = [];
@@ -839,10 +1291,13 @@
   }
 
   function buildTabs() {
-    var defs = [['orders', 'Orders'], ['lifecycle', 'Owner Lifecycle']];
+    var defs = [['orders', 'Orders'], ['lifecycle', 'Owner Lifecycle'], ['pending', 'Pending']];
     var h = "<div class='tabs'>";
     defs.forEach(function (t) {
-      h += "<div class='tab" + (activeTab === t[0] ? ' active' : '') + "' data-tab='" + t[0] + "'>" + t[1] + "</div>";
+      var extra = '';
+      if (t[0] === 'pending' && serverMode) extra = " <span style='display:inline-block;width:6px;height:6px;border-radius:50%;background:var(--mod);margin-left:4px;animation:pulse 2s infinite'></span>";
+      if (t[0] === 'pending' && !serverMode) extra = " <span style='font-size:9px;color:var(--tx3)'>(live only)</span>";
+      h += "<div class='tab" + (activeTab === t[0] ? ' active' : '') + "' data-tab='" + t[0] + "'>" + t[1] + extra + "</div>";
     });
     return h + "</div>";
   }
@@ -1529,9 +1984,11 @@
       F.changesAttr = '__all__';
     }
 
-    var content = activeTab === 'orders'
-      ? buildOrders(pageData, stats, timeline, total, ses, tes, links, allAttrs, ownerAttrs, resourceAttrs)
-      : buildLifecycle();
+    var content;
+    if (activeTab === 'orders') content = buildOrders(pageData, stats, timeline, total, ses, tes, links, allAttrs, ownerAttrs, resourceAttrs);
+    else if (activeTab === 'lifecycle') content = buildLifecycle();
+    else if (activeTab === 'pending') content = buildPending();
+    else content = '';
 
     document.getElementById('app').innerHTML = buildHeader(total, stats) + buildTabs() + content;
 
@@ -1636,6 +2093,54 @@
 
       if (t.id === 'btnExport') { exportCSV(); return; }
       if (t.id === 'btnReset')  { resetFilters(); return; }
+
+      // Pending tab handlers
+      if (t.id === 'btnRefreshPending') { fetchPending(); return; }
+      if (t.id === 'btnCancelAllFiltered') { cancelAllFiltered(); return; }
+      if (t.id === 'pendingOwnerLens') { pendingFilterOpen = !pendingFilterOpen; render(); return; }
+      // Pending sort headers
+      var psortTh = t.closest && t.closest('th[data-psort]');
+      if (psortTh) {
+        var sc = psortTh.getAttribute('data-psort');
+        pendingSortDir = pendingSortCol === sc ? (pendingSortDir === 'asc' ? 'desc' : 'asc') : 'asc';
+        pendingSortCol = sc; pPage = 0; render(); return;
+      }
+      var cancelArtBtn = t.closest && t.closest('.btn-cancel-art[data-pidx]');
+      if (cancelArtBtn) {
+        var ci = parseInt(cancelArtBtn.getAttribute('data-pidx'));
+        var cg = pendingGroups[ci];
+        if (cg) cancelART(cg.artId, ci, cg.ownerName);
+        return;
+      }
+      var loadDetailBtn = t.closest && t.closest('.btn-load-detail[data-pidx]');
+      if (loadDetailBtn) { fetchPendingDetail(parseInt(loadDetailBtn.getAttribute('data-pidx'))); return; }
+      var cancelNavBtn = t.closest && t.closest('.pend-cancel-nav[data-nav-id]');
+      if (cancelNavBtn) {
+        cancelNavigation(cancelNavBtn.getAttribute('data-nav-id'), parseInt(cancelNavBtn.getAttribute('data-pidx')));
+        return;
+      }
+      var pidxRow = t.closest && t.closest('tr[data-pidx]');
+      if (pidxRow && !cancelArtBtn && !loadDetailBtn && !cancelNavBtn) {
+        var pidx = parseInt(pidxRow.getAttribute('data-pidx'));
+        pendingExpanded[pidx] = !pendingExpanded[pidx];
+        // Auto-fetch detail when expanding
+        if (pendingExpanded[pidx] && !pendingDetail[pidx] && !pendingDetailLoading[pidx]) {
+          fetchPendingDetail(pidx);
+        } else {
+          render();
+        }
+        return;
+      }
+      // Pending pagination
+      var ppgBtn = t.closest && t.closest('[data-ppg]');
+      if (ppgBtn && !ppgBtn.disabled) { pPage = parseInt(ppgBtn.getAttribute('data-ppg')); render(); return; }
+      // Property chip remove
+      var propRm = t.closest && t.closest('.pend-prop-rm[data-prop-idx]');
+      if (propRm) {
+        var pi = parseInt(propRm.getAttribute('data-prop-idx'));
+        pendingPropFilters.splice(pi, 1); pPage = 0; render(); return;
+      }
+      if (t.id === 'modalConfirm') { /* handled by showConfirmModal */ return; }
 
       var secHdr = t.closest && t.closest('.fp-section-hdr[data-section]');
       if (secHdr) {
@@ -1786,6 +2291,11 @@
         case 'fRolesMin':      F.rolesMin     = t.value; page = 0; triggerRender(); break;
         case 'fRolesMax':      F.rolesMax     = t.value; page = 0; triggerRender(); break;
       }
+      // Pending ART dropdown
+      if (t.id === 'pendingArtSelect') {
+        pendingArtFilter = t.value;
+        pPage = 0; render();
+      }
     });
 
     document.addEventListener('input', function (ev) {
@@ -1812,6 +2322,25 @@
           debounceTimer = setTimeout(function () { F.rolesValue = val; page = 0; triggerRender(); }, 250); break;
         case 'lcSearch':
           debounceTimer = setTimeout(function () { F.lifecycleSearch = val; lcActiveOwner = null; lcPanelExpanded = {}; triggerRender(); }, 300); break;
+        case 'pendingOwnerSearch':
+          debounceTimer = setTimeout(function () { pendingFilter = val; pPage = 0; render(); }, 250); break;
+        case 'pendingPropInput':
+          pendingPropInput = val; break;
+        case 'pendingValInput':
+          debounceTimer = setTimeout(function () { pendingValFilter = val; pPage = 0; render(); }, 250); break;
+      }
+    });
+
+    document.addEventListener('keydown', function (ev) {
+      if (ev.target.id === 'pendingPropInput' && ev.key === 'Enter') {
+        ev.preventDefault();
+        var val = ev.target.value.trim();
+        if (val && pendingPropFilters.indexOf(val) < 0) {
+          pendingPropFilters.push(val);
+        }
+        pendingPropInput = '';
+        pPage = 0;
+        render();
       }
     });
 
